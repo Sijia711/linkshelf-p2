@@ -120,3 +120,11 @@ Keep business logic out of UI components when practical. Use Route Handlers for 
 ## 10. Rules maintenance
 
 Update this file when the actual architecture, dependencies, design, or working agreement changes. After the HW3 without-rules / with-rules experiment, record one concrete change to these rules based on an observed failure or inconsistency; do not claim an improvement unless the comparison supports it.
+
+
+## Scope Control
+
+- Implement only the features required by the current GitHub Issue.
+- Do not add unrelated features unless necessary.
+- Keep changes small and focused.
+- Avoid unnecessary dependencies and extra UI components.
