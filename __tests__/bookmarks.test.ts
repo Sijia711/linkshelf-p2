@@ -5,6 +5,8 @@ import {
   normalizeTags,
   validateCreateBookmarkInput,
   validateUpdateBookmarkInput,
+  isValidUuid,
+  validateBulkInput,
 } from "@/lib/bookmarks";
 
 describe("Bookmark Validation Helpers (Pure Logic)", () => {
@@ -148,6 +150,56 @@ describe("Bookmark Validation Helpers (Pure Logic)", () => {
       const result = validateUpdateBookmarkInput({ url: "ftp://invalid" });
       expect(result.isValid).toBe(false);
       expect(result.errors.url).toBeDefined();
+    });
+  });
+
+  describe("isValidUuid", () => {
+    it("should accept valid RFC 4122 v4 UUIDs", () => {
+      expect(isValidUuid("a1b2c3d4-e5f6-4a8b-9c0d-1e2f3a4b5c6d")).toBe(true);
+      expect(isValidUuid("00000000-0000-0000-0000-000000000000")).toBe(true);
+    });
+
+    it("should reject invalid UUID formats", () => {
+      expect(isValidUuid("not-a-uuid")).toBe(false);
+      expect(isValidUuid("")).toBe(false);
+      expect(isValidUuid(12345)).toBe(false);
+      expect(isValidUuid(null)).toBe(false);
+      expect(isValidUuid("a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d-extra")).toBe(false);
+    });
+  });
+
+  describe("validateBulkInput", () => {
+    it("should accept a valid array of UUIDs and deduplicate them", () => {
+      const id1 = "a1b2c3d4-e5f6-4a8b-9c0d-1e2f3a4b5c6d";
+      const id2 = "b2c3d4e5-f6a7-4b9c-8d1e-2f3a4b5c6d7e";
+      const result = validateBulkInput({ ids: [id1, id2, id1] });
+      expect(result.isValid).toBe(true);
+      expect(result.ids).toEqual([id1, id2]);
+    });
+
+    it("should reject non-object or missing payload", () => {
+      expect(validateBulkInput(null).isValid).toBe(false);
+      expect(validateBulkInput(undefined).isValid).toBe(false);
+      expect(validateBulkInput("").isValid).toBe(false);
+    });
+
+    it("should reject empty ids array", () => {
+      const result = validateBulkInput({ ids: [] });
+      expect(result.isValid).toBe(false);
+      expect(result.error).toBe("ids must be a non-empty array of UUIDs.");
+    });
+
+    it("should reject if any id is not a valid UUID", () => {
+      const result = validateBulkInput({ ids: ["valid-not", "a1b2c3d4-e5f6-4a8b-9c0d-1e2f3a4b5c6d"] });
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain("valid UUID");
+    });
+
+    it("should reject if ids array exceeds 100 items", () => {
+      const ids = Array.from({ length: 101 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+      const result = validateBulkInput({ ids });
+      expect(result.isValid).toBe(false);
+      expect(result.error).toContain("Cannot process more than 100");
     });
   });
 });

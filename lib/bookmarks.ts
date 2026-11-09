@@ -199,3 +199,49 @@ export function validateUpdateBookmarkInput(
     errors: {},
   };
 }
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Validates whether a value is a valid RFC 4122 UUID string.
+ */
+export function isValidUuid(id: unknown): boolean {
+  if (typeof id !== "string") {
+    return false;
+  }
+  return UUID_REGEX.test(id.trim());
+}
+
+/**
+ * Validates payload for bulk delete and restore operations.
+ */
+export function validateBulkInput(body: unknown): {
+  isValid: boolean;
+  ids?: string[];
+  error?: string;
+} {
+  if (!body || typeof body !== "object") {
+    return { isValid: false, error: "Invalid JSON object expected." };
+  }
+
+  const raw = body as { ids?: unknown };
+
+  if (!Array.isArray(raw.ids) || raw.ids.length === 0) {
+    return { isValid: false, error: "ids must be a non-empty array of UUIDs." };
+  }
+
+  if (raw.ids.length > 100) {
+    return { isValid: false, error: "Cannot process more than 100 bookmark IDs in a single request." };
+  }
+
+  const uniqueIds = Array.from(new Set(raw.ids));
+
+  for (const id of uniqueIds) {
+    if (!isValidUuid(id)) {
+      return { isValid: false, error: `Invalid UUID: "${String(id)}". All IDs must be valid UUIDs.` };
+    }
+  }
+
+  return { isValid: true, ids: uniqueIds as string[] };
+}
+
