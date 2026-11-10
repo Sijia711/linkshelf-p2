@@ -1,0 +1,80 @@
+import type { Bookmark } from "./bookmark";
+
+/**
+ * Core Learning Path model.
+ */
+export interface LearningPath {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Learning Path with computed progress statistics.
+ */
+export interface LearningPathWithStats extends LearningPath {
+  total_items: number;
+  completed_items: number;
+  progress_percentage: number;
+}
+
+/**
+ * Ordered item in a Learning Path linking to a Bookmark.
+ */
+export interface LearningPathItem {
+  id: string;
+  learning_path_id: string;
+  bookmark_id: string;
+  user_id: string;
+  position: number;
+  is_completed: boolean;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Joined bookmark information if active */
+  bookmark?: Bookmark | null;
+}
+
+/**
+ * Complete Learning Path detail with ordered items and progress.
+ */
+export interface LearningPathDetail extends LearningPath {
+  items: LearningPathItem[];
+  total_items: number;
+  completed_items: number;
+  progress_percentage: number;
+}
+
+/**
+ * Input for creating a new learning path (POST /api/learning-paths).
+ */
+export interface CreateLearningPathInput {
+  title: string;
+  description?: string;
+}
+
+/**
+ * Input for updating a learning path (PATCH /api/learning-paths/:id).
+ */
+export interface UpdateLearningPathInput {
+  title?: string;
+  description?: string;
+}
+
+/**
+ * Input for adding a bookmark item to a path (POST /api/learning-paths/:id/items).
+ */
+export interface AddPathItemInput {
+  bookmark_id: string;
+}
+
+/**
+ * Input for updating a path item (PATCH /api/learning-paths/:id/items/:itemId).
+ */
+export interface UpdatePathItemInput {
+  is_completed?: boolean;
+  position?: number;
+}
