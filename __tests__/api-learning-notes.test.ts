@@ -276,7 +276,7 @@ describe("Learning Path Notes REST API (/api/learning-paths/[id]/notes)", () => 
       );
     });
 
-    it("returns 500 when database upsert fails", async () => {
+    it("returns 500 when database upsert fails with non-42501 error", async () => {
       const pathQb = {
         select: vi.fn().mockReturnThis(),
         eq: vi.fn().mockReturnThis(),
@@ -301,6 +301,107 @@ describe("Learning Path Notes REST API (/api/learning-paths/[id]/notes)", () => 
 
       expect(res.status).toBe(500);
       expect(json.error.code).toBe("INTERNAL_ERROR");
+    });
+
+    it("falls back to update when upsert hits 42501 and note exists", async () => {
+      const pathQb = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: PATH_ID }, error: null }),
+      };
+
+      const upsertQb = {
+        upsert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({
+          data: null,
+          error: { code: "42501", message: "permission denied for table learning_notes" },
+        }),
+      };
+
+      const existingNote = {
+        id: NOTE_ID,
+        user_id: USER_ID,
+        learning_path_id: PATH_ID,
+        content: DEFAULT_EMPTY_NOTE_DOC,
+        created_at: "2026-11-10T12:00:00Z",
+        updated_at: "2026-11-10T12:05:00Z",
+      };
+
+      const updateQb = {
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: existingNote, error: null }),
+      };
+
+      mockSupabase.from
+        .mockReturnValueOnce(pathQb)
+        .mockReturnValueOnce(upsertQb)
+        .mockReturnValueOnce(updateQb);
+
+      const res = await putPathNotes(
+        makeRequest("PUT", { content: DEFAULT_EMPTY_NOTE_DOC }),
+        { params: Promise.resolve({ id: PATH_ID }) }
+      );
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.data.note).toEqual(existingNote);
+    });
+
+    it("falls back to insert when upsert hits 42501 and note does not yet exist", async () => {
+      const pathQb = {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: PATH_ID }, error: null }),
+      };
+
+      const upsertQb = {
+        upsert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({
+          data: null,
+          error: { code: "42501", message: "permission denied for table learning_notes" },
+        }),
+      };
+
+      const updateQb = {
+        update: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      };
+
+      const newNote = {
+        id: NOTE_ID,
+        user_id: USER_ID,
+        learning_path_id: PATH_ID,
+        content: DEFAULT_EMPTY_NOTE_DOC,
+        created_at: "2026-11-10T12:00:00Z",
+        updated_at: "2026-11-10T12:00:00Z",
+      };
+
+      const insertQb = {
+        insert: vi.fn().mockReturnThis(),
+        select: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: newNote, error: null }),
+      };
+
+      mockSupabase.from
+        .mockReturnValueOnce(pathQb)
+        .mockReturnValueOnce(upsertQb)
+        .mockReturnValueOnce(updateQb)
+        .mockReturnValueOnce(insertQb);
+
+      const res = await putPathNotes(
+        makeRequest("PUT", { content: DEFAULT_EMPTY_NOTE_DOC }),
+        { params: Promise.resolve({ id: PATH_ID }) }
+      );
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.data.note).toEqual(newNote);
     });
   });
 

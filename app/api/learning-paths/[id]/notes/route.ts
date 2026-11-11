@@ -110,8 +110,11 @@ export async function PUT(request: Request, { params }: RouteContext) {
     );
   }
 
-  // Upsert the single shared notebook for this learning path
-  const { data: note, error: dbError } = await supabase
+  // Upsert the single shared notebook for this learning path.
+  // Note: In PostgreSQL, INSERT ... ON CONFLICT DO UPDATE requires table-level UPDATE privilege.
+  // We first attempt upsert; if table privileges return 42501 (e.g. before migration 004 is applied),
+  // we seamlessly fall back to an update-then-insert pattern with unique constraint conflict handling.
+  let { data: note, error: dbError } = await supabase
     .from("learning_notes")
     .upsert(
       {
@@ -125,7 +128,69 @@ export async function PUT(request: Request, { params }: RouteContext) {
     .select()
     .single();
 
-  if (dbError) {
+  if (dbError && dbError.code === "42501") {
+    // Fallback: update existing note if present
+    const { data: updatedNote, error: updateError } = await supabase
+      .from("learning_notes")
+      .update({
+        content: validation.data!,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("learning_path_id", pathId)
+      .eq("user_id", user.id)
+      .select()
+      .maybeSingle();
+
+    if (!updateError && updatedNote) {
+      note = updatedNote;
+      dbError = null;
+    } else if (!updateError && !updatedNote) {
+      // Row did not exist yet; insert new note
+      const { data: insertedNote, error: insertError } = await supabase
+        .from("learning_notes")
+        .insert({
+          learning_path_id: pathId,
+          user_id: user.id,
+          content: validation.data!,
+        })
+        .select()
+        .single();
+
+      if (!insertError && insertedNote) {
+        note = insertedNote;
+        dbError = null;
+      } else if (
+        insertError &&
+        (insertError.code === "23505" || insertError.message?.includes("duplicate key"))
+      ) {
+        // Concurrency conflict: another request inserted concurrently; retry update
+        const { data: retriedNote, error: retryError } = await supabase
+          .from("learning_notes")
+          .update({
+            content: validation.data!,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("learning_path_id", pathId)
+          .eq("user_id", user.id)
+          .select()
+          .single();
+
+        if (!retryError && retriedNote) {
+          note = retriedNote;
+          dbError = null;
+        } else {
+          dbError = retryError;
+        }
+      } else {
+        dbError = insertError;
+      }
+    } else {
+      dbError = updateError;
+    }
+  }
+
+  if (dbError || !note) {
+    console.error("Failed to save learning note:", dbError);
     return jsonError("INTERNAL_ERROR", "Failed to save learning path notebook.", 500);
   }
 
