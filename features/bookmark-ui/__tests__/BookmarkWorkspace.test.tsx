@@ -324,3 +324,43 @@ describe("BookmarkWorkspace — selection, bulk delete, and Undo", () => {
     expect(screen.getByText("1 selected")).not.toBeNull();
   });
 });
+
+describe("BookmarkWorkspace — additional edge cases", () => {
+  it("Dismiss hides the Undo notice without restoring anything", async () => {
+    const { user, onRestore } = setup();
+    await selectCards(user, "MDN Web Docs");
+    await user.click(screen.getByRole("button", { name: "Delete Selected" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete Selected" }));
+
+    await user.click(await screen.findByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(onRestore).not.toHaveBeenCalled();
+  });
+
+  it("closes the Add dialog when the backdrop is clicked", async () => {
+    const { user, onCreate } = setup();
+    await user.click(screen.getByRole("button", { name: "+ Add Bookmark" }));
+    const backdrop = screen.getByRole("dialog").parentElement as HTMLElement;
+
+    await user.click(backdrop);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(onCreate).not.toHaveBeenCalled();
+  });
+
+  it("falls back to All when the active tag disappears from the bookmarks", async () => {
+    const { user, rerenderWith } = setup();
+    await user.click(screen.getByRole("button", { name: "reading" }));
+    expect(cardTitles()).toEqual(["A List Apart"]);
+
+    rerenderWith(SAMPLE.filter((b) => b.id !== "2"));
+    expect(cardTitles()).toEqual(["MDN Web Docs", "Postgres Documentation"]);
+    expect(screen.getByRole("button", { name: "All" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("keeps showing cards with an error banner when a refresh fails", () => {
+    setup({ errorMessage: "Could not refresh bookmarks." });
+    expect(screen.getByRole("alert").textContent).toBe("Could not refresh bookmarks.");
+    expect(cardTitles()).toHaveLength(3);
+  });
+});
+
