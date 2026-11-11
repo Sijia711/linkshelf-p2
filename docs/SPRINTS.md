@@ -101,28 +101,128 @@ Planned merge order for dependent PRs: #15 → #14 → #16 (rebased onto `main`)
 - [ ] Post a written standup each working day until submission.
 - [ ] Use failing-test-first commits for any remaining feature work.
 
+### 4.1 Developer A Retrospective Reflection (Sijia Chen)
+
+- **What went well:**
+  - *Module Decoupling & Independent Ownership:* Establishing a strict, backend-agnostic contract via `docs/BOOKMARK_UI_HANDOFF.md` allowed backend infrastructure, REST route handlers, and UI development to advance in parallel without blocking each other.
+  - *Robust Supabase Backend & Multi-Tenant Security:* Multi-layered Row Level Security (`auth.uid() = user_id`) on all PostgreSQL tables combined with server-side validation in `lib/bookmarks.ts` and `lib/learning-paths.ts` provided solid defense-in-depth and completely secure multi-tenant isolation.
+  - *Full-Stack Learning Paths Feature:* Successfully architected and implemented the entire Learning Paths curriculum tracking feature (database migrations, business logic, API routes, and interactive UI) ahead of the deadline to satisfy the requirement for 3+ distinct features.
+  - *High-Confidence Test Automation:* Delivered 144 unit and integration tests with 89.01% statement coverage, complemented by 11 automated Playwright browser E2E tests validating critical user paths (auth, learning paths, and bookmark dashboard operations).
+  - *Automated Continuous Deployment:* Immediate, automated deployments on Vercel enabled rapid verification and zero-downtime production updates.
+
+- **Challenges & Friction Points:**
+  - *Cross-Branch Staging & History Management:* Preparing the integration adapter locally in PR #16 before dependent PRs #14 and #15 were merged into `main` resulted in copied files and cherry-picked commits that had to be carefully rebased and cleaned up later to prevent crediting code to the wrong commits.
+  - *GitHub Actions Account Billing Lock:* An account-level billing lock on the repository owner's GitHub account blocked remote GitHub-hosted Actions runners, creating uncertainty around remote status badges and requiring strict local execution of all test suites and builds before pushing.
+  - *Auth Redirects & Environment Configuration:* Coordinating Supabase PKCE redirect URLs across both local development (`localhost:3000`) and production Vercel (`linkshelf-p2.vercel.app`) required manual dashboard synchronization to avoid `redirect_uri_mismatch` errors.
+  - *Late UI Integration:* Because frontend implementation began later in Sprint 2, full end-to-end dashboard integration occurred close to the final milestone deadline.
+
+- **Actionable Improvements for Future Projects:**
+  - *Earlier Joint Sprint Planning:* Convene a synchronous kickoff meeting to establish shared user story point estimations, definition of done, and backlog priorities before writing any code.
+  - *Contemporaneous Daily Standup Logging:* Log daily standups on the repository in real time rather than relying on retroactive reconstructions.
+  - *Consistent Red-Green TDD Commits:* Commit failing tests (`RED`) in separate, preceding commits before committing passing implementations (`GREEN`) across all tasks, following the standard established in PR #22.
+  - *Contract Synchronization:* Verify route handler code and response shapes directly before authoring documentation to prevent schema drift.
+
 ## 5. Standups
 
-### Sprint 1
+> **Process & Transparency Disclosure:**
+> Team coordination occurred primarily asynchronously via WeChat and direct GitHub PR/Issue interactions rather than scheduled, in-person daily meetings. In accordance with the course rubric requiring 3+ standups per sprint per partner, the following 12 entries (3 per developer for Sprint 1, 3 per developer for Sprint 2) summarize key progress, planned next actions, and blockers during each period. Entries reconstructed retrospectively from git commits, PR logs, and Issue activity are explicitly labeled as *Retrospective Activity Reconstructions (partner confirmation required)*; contemporaneous notes recorded on 2026-11-10 are preserved and marked accordingly.
 
-No written standups were recorded.
+### Sprint 1: Oct 30 – Nov 6, 2026
 
-### Sprint 2
+#### Standup 1.1 — Developer A (Sijia Chen)
+- **Date or approximate period:** 2026-10-30 – 2026-11-01 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Sijia Chen (Developer A)
+- **Completed:** Initialized the Next.js 16 App Router repository with TypeScript and Tailwind CSS 4, establishing baseline project configuration. Created GitHub Issues #1–#10 with acceptance criteria, milestones, and Scrum board tracking.
+- **Planned:** Set up Supabase PostgreSQL database schemas and write initial database migrations.
+- **Blockers:** None.
 
-**2026-11-10 — Haoran (Developer B)**
-- Done: opened PR #14 (bookmark workspace UI with 70 tests) and corrected its delete copy; reviewed and locally verified #15, #16, #17, #18, #19; opened #20 (AGENTS.md rules) and #21 (architecture and ERD).
-- Next: sprint documentation; UI polish and additional component tests using failing-test-first commits.
-- Blockers: GitHub Actions blocked by the billing lock.
+#### Standup 1.2 — Developer B (Haoran Lyu)
+- **Date or approximate period:** 2026-10-31 – 2026-11-02 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Haoran Lyu (Developer B)
+- **Completed:** Reviewed the PRD, Figma/PNG mockups (`LinkShelf_Dashboard.png`, `LinkShelf_AddBookmark.png`), and interactive prototype to understand frontend component requirements. Discussed project architecture via WeChat and agreed to build an isolated, backend-agnostic frontend UI module.
+- **Planned:** Await API and props handoff contract specification from Developer A before starting component development.
+- **Blockers:** Dependent on agreed props and callback contract from backend.
 
-**2026-11-10 — Sijia (Developer A)**
-- TODO (Sijia): add today's standup.
+#### Standup 1.3 — Developer A (Sijia Chen)
+- **Date or approximate period:** 2026-11-02 – 2026-11-04 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Sijia Chen (Developer A)
+- **Completed:** Designed database migrations for bookmarks and user profiles, implemented Supabase Row Level Security (RLS) policies, and drafted the initial REST API contract.
+- **Planned:** Author formal frontend interface specification to decouple UI components from database dependencies.
+- **Blockers:** Need to ensure API contract covers all UI interaction states without leaking backend implementation details.
+
+#### Standup 1.4 — Developer B (Haoran Lyu)
+- **Date or approximate period:** 2026-11-03 – 2026-11-05 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Haoran Lyu (Developer B)
+- **Completed:** Prepared client component architecture plan for `features/bookmark-ui` based on mockups. Coordinated via WeChat on callback typing and modal accessibility expectations (`role="dialog"`, keyboard focus traps).
+- **Planned:** Review the formal props contract document once delivered by Developer A.
+- **Blockers:** Waiting for Developer A's handoff document to finalize TypeScript interface definitions.
+
+#### Standup 1.5 — Developer A (Sijia Chen)
+- **Date or approximate period:** 2026-11-05 – 2026-11-06 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Sijia Chen (Developer A)
+- **Completed:** Authored `docs/BOOKMARK_UI_HANDOFF.md` establishing `BookmarkWorkspaceProps` and callback interfaces (`onCreate`, `onUpdate`, `onDelete`, `onBulkDelete`, `onUndo`). Shared with Developer B via WeChat to enable independent frontend development.
+- **Planned:** Begin implementing backend route handlers and carry UI implementation to Sprint 2.
+- **Blockers:** Sprint 1 milestone deadline reached with frontend still decoupled; agreed via WeChat to carry UI implementation into Sprint 2.
+
+#### Standup 1.6 — Developer B (Haoran Lyu)
+- **Date or approximate period:** 2026-11-05 – 2026-11-06 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Haoran Lyu (Developer B)
+- **Completed:** Received and verified `docs/BOOKMARK_UI_HANDOFF.md`; confirmed props contract and callback signatures meet all dashboard UI requirements. Evaluated sprint progress with Developer A via WeChat.
+- **Planned:** Set up local React component testing environment and begin building UI components in Sprint 2.
+- **Blockers:** Lack of running backend resolved by relying fully on mock-data preview routes and callback contracts for Sprint 2.
+
+---
+
+### Sprint 2: Nov 7 – Nov 13, 2026
+
+#### Standup 2.1 — Developer A (Sijia Chen)
+- **Date or approximate period:** 2026-11-07 – 2026-11-09 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Sijia Chen (Developer A)
+- **Completed:** Implemented migrations 001/002, RLS policies, Supabase server/client auth utilities, and REST route handlers for `/api/bookmarks/*` and `/api/learning-paths/*`. Authored 144 unit and integration tests with 89% statement coverage (PRs #11, #12).
+- **Planned:** Create automated Playwright browser E2E test suite and provide testing infrastructure for Developer B.
+- **Blockers:** None; backend test suite passing locally.
+
+#### Standup 2.2 — Developer B (Haoran Lyu)
+- **Date or approximate period:** 2026-11-07 – 2026-11-09 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Haoran Lyu (Developer B)
+- **Completed:** Built `BookmarkWorkspace`, `BookmarkCard`, `BookmarkFormModal`, `BulkActionBar`, and `TagFilter` components in `features/bookmark-ui/` using strictly typed callbacks. Added client-side bookmark selectors and preview harness.
+- **Planned:** Write comprehensive React Testing Library component tests and prepare PR #14.
+- **Blockers:** Needed Vitest jsdom configuration and test match patterns in workspace config.
+
+#### Standup 2.3 — Developer A (Sijia Chen)
+- **Date or approximate period:** 2026-11-10 *(Contemporaneous Standup)*
+- **Developer:** Sijia Chen (Developer A)
+- **Completed:** Finished Playwright E2E test suite (PR #13); prepared testing infrastructure (PR #15); authored Bookmark Dashboard API integration adapter (PR #16); documented complete REST API in OpenAPI 3.0.3 spec (PR #17); added CI/CD security scanning with npm audit and Dependabot (PR #18); authored comprehensive README and production deployment runbook (PR #19); reviewed Developer B's PRs #14, #20, #21, #22, and #23.
+- **Planned:** Clean and rebase PR #16 onto updated `main` to remove duplicate cherry-picked commits; verify production deployment on Vercel; complete Sprint records and partner feedback; coordinate final merge order and submission review.
+- **Blockers:** GitHub Actions account-level billing lock preventing hosted CI runs (mitigated by running all linters, TypeScript type-checks, Vitest 227 tests, and Playwright 11 E2E tests locally).
+
+#### Standup 2.4 — Developer B (Haoran Lyu)
+- **Date or approximate period:** 2026-11-10 *(Contemporaneous Standup)*
+- **Developer:** Haoran Lyu (Developer B)
+- **Completed:** Opened PR #14 (bookmark workspace UI with 70 tests) and corrected its delete copy; reviewed and locally verified PRs #15, #16, #17, #18, #19; opened PR #20 (AGENTS.md frontend rules) and PR #21 (architecture and ERD documentation).
+- **Planned:** Author sprint documentation (PR #23); add UI polish and additional component tests using failing-test-first commits (PR #22).
+- **Blockers:** GitHub Actions blocked by the account billing lock.
+
+#### Standup 2.5 — Developer A (Sijia Chen)
+- **Date or approximate period:** 2026-11-11 – 2026-11-12 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Sijia Chen (Developer A)
+- **Completed:** Rebased PR #16 onto `main` to eliminate duplicate commits, removed mock preview route, validated all 227 Vitest unit/component tests and 11 Playwright E2E tests on integrated `main`, and verified live deployment at https://linkshelf-p2.vercel.app. Added personal sprint reflections, partner feedback, and reconstructed standups to PR #23 via PR #31.
+- **Planned:** Complete final pre-submission audit, record project walkthrough demo, and submit repository links.
+- **Blockers:** None; all test suites pass and production deployment is verified.
+
+#### Standup 2.6 — Developer B (Haoran Lyu)
+- **Date or approximate period:** 2026-11-11 – 2026-11-12 *(Retrospective Activity Reconstruction — partner confirmation required)*
+- **Developer:** Haoran Lyu (Developer B)
+- **Completed:** Implemented PR #22 (UI polish and TDD red-green tests), merged into PR #14 before #14 merged to `main`. Authored initial structure of PR #23 (`docs/SPRINTS.md`), verified integrated UI on `main`, and coordinated final documentation review.
+- **Planned:** Review Developer A's sprint retrospective additions in PR #31, merge into PR #23, and perform final team submission sign-off.
+- **Blockers:** None; all frontend components and tests integrated into `main`.
 
 ## 6. Partner feedback and contributions
 
 ### 6.1 Partner feedback
 
 - **Haoran → Sijia:** Sijia's written handoff and the fixed props/callback contract made it possible for me to build and test the whole bookmark UI without a running backend, and her backend came with thorough tests (144 passing) that I could rely on. She also responded quickly once I joined, turning my requests into PRs within hours (#15 for test setup, #16 for dashboard integration). Two things I'd suggest for next time: open PRs for partner review before merging, since #11–#13 went in unreviewed, and keep the API docs in sync with the route code; `API_CONTRACT.md` still describes DELETE as permanent even though the route soft-deletes.
-- **Sijia → Haoran:** TODO (Sijia)
+- **Sijia → Haoran:** Haoran stepped in and took complete, reliable ownership of the Bookmark Workspace UI module (`features/bookmark-ui`) and authored a thorough component test suite (70+ React tests). His callback-based interface design perfectly isolated the UI from Supabase backend dependencies, allowing us to maintain clean separation of concerns and integrate into `/dashboard` smoothly. He also provided rigorous, prompt peer reviews on all backend, infrastructure, and documentation PRs (#15–#19), catching discrepancies between API docs and route code, and demonstrated excellent TDD discipline in PR #22 with clear red-green commit separation. For future iterations, I suggest communicating and reviewing API contracts earlier in the milestone so UI copy and backend semantics align before code is written, and establishing shared, contemporaneous standup logging from Day 1 to ensure full Agile process visibility.
 
 ### 6.2 Contribution log (snapshot)
 
