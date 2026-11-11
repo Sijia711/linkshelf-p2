@@ -101,6 +101,27 @@ Planned merge order for dependent PRs: #15 → #14 → #16 (rebased onto `main`)
 - [ ] Post a written standup each working day until submission.
 - [ ] Use failing-test-first commits for any remaining feature work.
 
+### 4.1 Developer A Retrospective Reflection (Sijia Chen)
+
+- **What went well:**
+  - *Module Decoupling & Independent Ownership:* Establishing a strict, backend-agnostic contract via `docs/BOOKMARK_UI_HANDOFF.md` allowed backend infrastructure, REST route handlers, and UI development to advance in parallel without blocking each other.
+  - *Robust Supabase Backend & Multi-Tenant Security:* Multi-layered Row Level Security (`auth.uid() = user_id`) on all PostgreSQL tables combined with server-side validation in `lib/bookmarks.ts` and `lib/learning-paths.ts` provided solid defense-in-depth and completely secure multi-tenant isolation.
+  - *Full-Stack Learning Paths Feature:* Successfully architected and implemented the entire Learning Paths curriculum tracking feature (database migrations, business logic, API routes, and interactive UI) ahead of the deadline to satisfy the requirement for 3+ distinct features.
+  - *High-Confidence Test Automation:* Delivered 144 unit and integration tests with 89.01% statement coverage, complemented by 11 automated Playwright browser E2E tests validating critical user paths (auth, learning paths, and bookmark dashboard operations).
+  - *Automated Continuous Deployment:* Immediate, automated deployments on Vercel enabled rapid verification and zero-downtime production updates.
+
+- **Challenges & Friction Points:**
+  - *Cross-Branch Staging & History Management:* Preparing the integration adapter locally in PR #16 before dependent PRs #14 and #15 were merged into `main` resulted in copied files and cherry-picked commits that had to be carefully rebased and cleaned up later to prevent crediting code to the wrong commits.
+  - *GitHub Actions Account Billing Lock:* An account-level billing lock on the repository owner's GitHub account blocked remote GitHub-hosted Actions runners, creating uncertainty around remote status badges and requiring strict local execution of all test suites and builds before pushing.
+  - *Auth Redirects & Environment Configuration:* Coordinating Supabase PKCE redirect URLs across both local development (`localhost:3000`) and production Vercel (`linkshelf-p2.vercel.app`) required manual dashboard synchronization to avoid `redirect_uri_mismatch` errors.
+  - *Late UI Integration:* Because frontend implementation began later in Sprint 2, full end-to-end dashboard integration occurred close to the final milestone deadline.
+
+- **Actionable Improvements for Future Projects:**
+  - *Earlier Joint Sprint Planning:* Convene a synchronous kickoff meeting to establish shared user story point estimations, definition of done, and backlog priorities before writing any code.
+  - *Contemporaneous Daily Standup Logging:* Log daily standups on the repository in real time rather than relying on retroactive reconstructions.
+  - *Consistent Red-Green TDD Commits:* Commit failing tests (`RED`) in separate, preceding commits before committing passing implementations (`GREEN`) across all tasks, following the standard established in PR #22.
+  - *Contract Synchronization:* Verify route handler code and response shapes directly before authoring documentation to prevent schema drift.
+
 ## 5. Standups
 
 ### Sprint 1
@@ -115,14 +136,16 @@ No written standups were recorded.
 - Blockers: GitHub Actions blocked by the billing lock.
 
 **2026-11-10 — Sijia (Developer A)**
-- TODO (Sijia): add today's standup.
+- **Yesterday / Completed:** Finished Playwright E2E test suite (PR #13); prepared testing infrastructure (PR #15); authored Bookmark Dashboard API integration adapter (PR #16); documented complete REST API in OpenAPI 3.0.3 spec (PR #17); added CI/CD security scanning with npm audit and Dependabot (PR #18); authored comprehensive README and production deployment runbook (PR #19); reviewed Developer B's PRs #14, #20, #21, #22, and #23.
+- **Today / Planned:** Clean and rebase PR #16 onto updated `main` to remove duplicate cherry-picked commits; verify production deployment on Vercel; complete Sprint records and partner feedback; coordinate final merge order and submission review.
+- **Blockers:** GitHub Actions account-level billing lock preventing hosted CI runs (mitigated by running all linters, TypeScript type-checks, Vitest 227 tests, and Playwright 11 E2E tests locally).
 
 ## 6. Partner feedback and contributions
 
 ### 6.1 Partner feedback
 
 - **Haoran → Sijia:** Sijia's written handoff and the fixed props/callback contract made it possible for me to build and test the whole bookmark UI without a running backend, and her backend came with thorough tests (144 passing) that I could rely on. She also responded quickly once I joined, turning my requests into PRs within hours (#15 for test setup, #16 for dashboard integration). Two things I'd suggest for next time: open PRs for partner review before merging, since #11–#13 went in unreviewed, and keep the API docs in sync with the route code; `API_CONTRACT.md` still describes DELETE as permanent even though the route soft-deletes.
-- **Sijia → Haoran:** TODO (Sijia)
+- **Sijia → Haoran:** Haoran stepped in and took complete, reliable ownership of the Bookmark Workspace UI module (`features/bookmark-ui`) and authored a thorough component test suite (70+ React tests). His callback-based interface design perfectly isolated the UI from Supabase backend dependencies, allowing us to maintain clean separation of concerns and integrate into `/dashboard` smoothly. He also provided rigorous, prompt peer reviews on all backend, infrastructure, and documentation PRs (#15–#19), catching discrepancies between API docs and route code, and demonstrated excellent TDD discipline in PR #22 with clear red-green commit separation. For future iterations, I suggest communicating and reviewing API contracts earlier in the milestone so UI copy and backend semantics align before code is written, and establishing shared, contemporaneous standup logging from Day 1 to ensure full Agile process visibility.
 
 ### 6.2 Contribution log (snapshot)
 
