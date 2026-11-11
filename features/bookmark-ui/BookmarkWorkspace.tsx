@@ -237,7 +237,7 @@ export function BookmarkWorkspace({
       {confirm.kind === "single" && (
         <DeleteConfirmDialog
           heading="Delete bookmark?"
-          message={`“${confirm.bookmark.title}” will be permanently deleted.`}
+          message={`“${confirm.bookmark.title}” will be deleted from your bookmarks.`}
           confirmLabel="Delete"
           failureMessage={DELETE_ERROR_MESSAGE}
           onConfirm={confirmDelete}

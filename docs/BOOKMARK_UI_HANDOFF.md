@@ -42,7 +42,7 @@ import type { BookmarkInput, BookmarkRecord, BookmarkWorkspaceProps } from "@/fe
 | `errorMessage?` | `string \| null` | Shown as an alert banner; suppresses the empty state. |
 | `onCreate` | `(input) => Promise<void>` | Called once per Save; resolve only after the API accepted it. |
 | `onUpdate` | `(id, input) => Promise<void>` | Full `{ title, url, tags }` is always sent (valid for the PATCH route). |
-| `onDelete` | `(id) => Promise<void>` | Single delete. UI copy says "permanently deleted" to match `DELETE /api/bookmarks/:id`. |
+| `onDelete` | `(id) => Promise<void>` | Single delete. The API soft-deletes (sets `deleted_at`); the UI does not offer Undo for single deletes. |
 | `onBulkDelete` | `(ids) => Promise<void>` | One call per confirmed bulk delete. |
 | `onRestore` | `(ids) => Promise<void>` | Undo; receives exactly the IDs of the last successful bulk delete. |
 
