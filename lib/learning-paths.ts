@@ -202,3 +202,16 @@ export function reorderItems<T extends { id: string; position: number }>(
 
   return { updated: true, items: reindexed };
 }
+
+/**
+ * Extracts a clean, readable domain/hostname from a URL string for display context.
+ */
+export function extractDomain(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+

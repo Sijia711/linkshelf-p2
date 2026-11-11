@@ -14,7 +14,7 @@ export default defineConfig({
     environment: "node",
     globals: true,
     include: [
-      "__tests__/**/*.test.ts",
+      "__tests__/**/*.test.{ts,tsx}",
       "features/**/*.test.{ts,tsx}",
     ],
     coverage: {

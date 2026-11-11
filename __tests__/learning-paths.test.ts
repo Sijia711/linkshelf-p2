@@ -5,6 +5,7 @@ import {
   validateAddPathItemInput,
   calculateProgress,
   reorderItems,
+  extractDomain,
 } from "@/lib/learning-paths";
 
 describe("Learning Paths Pure Helpers & Validation", () => {
@@ -175,6 +176,23 @@ describe("Learning Paths Pure Helpers & Validation", () => {
       const { updated, items } = reorderItems(list, "3", "down");
       expect(updated).toBe(false);
       expect(items).toEqual(list);
+    });
+  });
+
+  describe("extractDomain", () => {
+    it("should extract hostname without www prefix", () => {
+      expect(extractDomain("https://www.youtube.com/watch?v=123")).toBe("youtube.com");
+      expect(extractDomain("https://youtube.com/playlist")).toBe("youtube.com");
+      expect(extractDomain("http://www.github.com/facebook/react")).toBe("github.com");
+    });
+
+    it("should handle subdomains accurately", () => {
+      expect(extractDomain("https://docs.python.org/3/tutorial/")).toBe("docs.python.org");
+      expect(extractDomain("https://nextjs.org/docs")).toBe("nextjs.org");
+    });
+
+    it("should fall back gracefully to original input if URL is malformed", () => {
+      expect(extractDomain("not-a-valid-url")).toBe("not-a-valid-url");
     });
   });
 });
