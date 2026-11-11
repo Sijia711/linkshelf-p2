@@ -1,13 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
 import { jsonSuccess, jsonError } from "@/lib/api-response";
-import { reorderItems } from "@/lib/learning-paths";
+import { reorderItems, validateProgressPercentage } from "@/lib/learning-paths";
 import type { UpdatePathItemInput } from "@/types/learning-path";
 
 type RouteContext = { params: Promise<{ id: string; itemId: string }> };
 
 /**
  * Validates an UpdatePathItemInput request body.
- * Returns the validated data or an error message.
+ * Supports:
+ * - progress_percentage (0-100 numeric, truncated toward zero)
+ * - is_completed (boolean, backward compatible: true -> 100, false -> 0)
+ * - direction ("up" | "down" for reordering)
  */
 function validateUpdatePathItemInput(input: unknown): {
   isValid: boolean;
@@ -19,23 +22,32 @@ function validateUpdatePathItemInput(input: unknown): {
   }
 
   const raw = input as Record<string, unknown>;
+  const hasProgress = raw.progress_percentage !== undefined;
   const hasIsCompleted = raw.is_completed !== undefined;
   const hasDirection = raw.direction !== undefined;
 
-  if (!hasIsCompleted && !hasDirection) {
+  if (!hasProgress && !hasIsCompleted && !hasDirection) {
     return {
       isValid: false,
-      error: "At least one field (is_completed, direction) must be provided.",
+      error: "At least one field (progress_percentage, is_completed, direction) must be provided.",
     };
   }
 
   const data: UpdatePathItemInput & { direction?: "up" | "down" } = {};
 
-  if (hasIsCompleted) {
+  if (hasProgress) {
+    const progressValidation = validateProgressPercentage(raw.progress_percentage);
+    if (!progressValidation.isValid) {
+      return { isValid: false, error: progressValidation.error };
+    }
+    data.progress_percentage = progressValidation.value!;
+    data.is_completed = progressValidation.value === 100;
+  } else if (hasIsCompleted) {
     if (typeof raw.is_completed !== "boolean") {
       return { isValid: false, error: "is_completed must be a boolean." };
     }
     data.is_completed = raw.is_completed;
+    data.progress_percentage = raw.is_completed ? 100 : 0;
   }
 
   if (hasDirection) {
@@ -168,17 +180,23 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
   }
 
-  // Handle is_completed toggle
+  // Handle progress percentage & completion updates
   const updateFields: Record<string, unknown> = {};
 
-  if (validation.data?.is_completed !== undefined) {
+  if (validation.data?.progress_percentage !== undefined) {
+    updateFields.progress_percentage = validation.data.progress_percentage;
+    updateFields.is_completed = validation.data.progress_percentage === 100;
+    updateFields.completed_at =
+      validation.data.progress_percentage === 100 ? new Date().toISOString() : null;
+  } else if (validation.data?.is_completed !== undefined) {
     updateFields.is_completed = validation.data.is_completed;
+    updateFields.progress_percentage = validation.data.is_completed ? 100 : 0;
     updateFields.completed_at = validation.data.is_completed ? new Date().toISOString() : null;
   }
 
   // Fetch and return the final state of the item
   if (Object.keys(updateFields).length > 0) {
-    const { data: updated, error: updateError } = await supabase
+    let { data: updated, error: updateError } = await supabase
       .from("learning_path_items")
       .update(updateFields)
       .eq("id", itemId)
@@ -186,11 +204,45 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       .select()
       .single();
 
+    if (
+      updateError &&
+      updateFields.progress_percentage !== undefined &&
+      (updateError.code === "42703" ||
+        updateError.code === "PGRST204" ||
+        updateError.code === "42501" ||
+        (updateError.message && updateError.message.includes("progress_percentage")))
+    ) {
+      // If progress_percentage column does not exist in DB yet or lacks UPDATE privilege,
+      // fall back to updating without it (updating is_completed, completed_at, updated_at)
+      const fallbackFields = { ...updateFields };
+      delete fallbackFields.progress_percentage;
+      const fallback = await supabase
+        .from("learning_path_items")
+        .update(fallbackFields)
+        .eq("id", itemId)
+        .eq("user_id", user.id)
+        .select()
+        .single();
+      updated = fallback.data;
+      updateError = fallback.error;
+    }
+
     if (updateError || !updated) {
+      console.error("Failed to update learning path item:", updateError);
       return jsonError("INTERNAL_ERROR", "Failed to update learning path item.", 500);
     }
 
-    return jsonSuccess({ item: updated });
+    const targetProgress = validation.data?.progress_percentage;
+    const returnedItem = updated
+      ? {
+          ...updated,
+          progress_percentage:
+            (updated as { progress_percentage?: number }).progress_percentage ??
+            (targetProgress !== undefined ? targetProgress : updated.is_completed ? 100 : 0),
+        }
+      : updated;
+
+    return jsonSuccess({ item: returnedItem });
   }
 
   // If only reordering was done, refetch the updated item
@@ -205,7 +257,16 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return jsonError("INTERNAL_ERROR", "Failed to retrieve updated item.", 500);
   }
 
-  return jsonSuccess({ item: refreshed });
+  const returnedRefreshed = refreshed
+    ? {
+        ...refreshed,
+        progress_percentage:
+          (refreshed as { progress_percentage?: number }).progress_percentage ??
+          (refreshed.is_completed ? 100 : 0),
+      }
+    : refreshed;
+
+  return jsonSuccess({ item: returnedRefreshed });
 }
 
 /**

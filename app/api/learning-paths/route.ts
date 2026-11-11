@@ -23,19 +23,39 @@ export async function GET() {
     return jsonError("UNAUTHORIZED", "Authentication required. Please sign in.", 401);
   }
 
-  // Fetch paths with their items (for progress calculation)
-  const { data: paths, error: dbError } = await supabase
+  // Fetch paths with their items (for progress calculation).
+  // Gracefully handles environments before migration 004 is applied (error 42703: column does not exist).
+  let { data: paths, error: dbError } = await supabase
     .from("learning_paths")
-    .select("*, learning_path_items(id, is_completed)")
+    .select("*, learning_path_items(id, is_completed, progress_percentage)")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false });
+
+  if (
+    dbError &&
+    ((dbError as { code?: string }).code === "42703" ||
+      (dbError as { code?: string }).code === "PGRST204" ||
+      (dbError.message && dbError.message.includes("progress_percentage")))
+  ) {
+    const fallback = await supabase
+      .from("learning_paths")
+      .select("*, learning_path_items(id, is_completed)")
+      .eq("user_id", user.id)
+      .order("created_at", { ascending: false });
+    paths = fallback.data;
+    dbError = fallback.error;
+  }
 
   if (dbError) {
     return jsonError("INTERNAL_ERROR", "Failed to retrieve learning paths.", 500);
   }
 
   const result: LearningPathWithStats[] = (paths ?? []).map((path) => {
-    const items = (path.learning_path_items ?? []) as { id: string; is_completed: boolean }[];
+    const items = (path.learning_path_items ?? []) as {
+      id: string;
+      is_completed: boolean;
+      progress_percentage?: number | null;
+    }[];
     const progress = calculateProgress(items);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { learning_path_items: _items, ...pathFields } = path;
