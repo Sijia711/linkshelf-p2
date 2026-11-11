@@ -32,7 +32,7 @@ test.describe("Learning Paths E2E Flow", () => {
     }
   });
 
-  test("can view learning paths list and create a new learning path", async ({ page }) => {
+  test("can view learning paths list, create a new learning path without duplicates, and open it", async ({ page }) => {
     // 1. Navigate to /learning-paths
     await page.goto("/learning-paths");
     await expect(page.getByRole("heading", { name: "Learning Paths" })).toBeVisible();
@@ -47,14 +47,19 @@ test.describe("Learning Paths E2E Flow", () => {
     await page.getByLabel(/Description/i).fill(description);
 
     // 4. Save
-    await page.getByRole("button", { name: "Save" }).click();
+    const saveBtn = page.getByTestId("save-path-button");
+    await saveBtn.click();
 
-    // 5. Verify the card appears in the list
-    const cardTitle = page.locator("h3", { hasText: uniqueTitle });
-    await expect(cardTitle).toBeVisible();
+    // 5. Verify exactly one card appears with this title (no duplicate card creation)
+    const matchingCards = page.locator("h3", { hasText: uniqueTitle });
+    await expect(matchingCards).toHaveCount(1);
 
-    // Extract path ID from click navigation
-    await cardTitle.click();
+    // 6. Navigate to detail page via the explicit 'Open Path' action
+    const card = page.locator(`[data-testid^="learning-path-card-"]`, { hasText: uniqueTitle });
+    const openBtn = card.getByTestId("open-path-button");
+    await expect(openBtn).toBeVisible();
+    await openBtn.click();
+
     await expect(page).toHaveURL(/\/learning-paths\/[0-9a-fA-F-]+/);
     const urlParts = page.url().split("/");
     createdPathId = urlParts[urlParts.length - 1];
@@ -82,7 +87,7 @@ test.describe("Learning Paths E2E Flow", () => {
     await expect(page.locator("h3", { hasText: uniqueTitle })).toBeVisible();
 
     // 3. Edit title
-    const card = page.locator(".border", { hasText: uniqueTitle });
+    const card = page.locator(`[data-testid="learning-path-card-${createdPathId}"]`);
     await card.getByRole("button", { name: "Edit" }).click();
 
     const titleInput = page.getByLabel(/^Title/i);
@@ -96,7 +101,7 @@ test.describe("Learning Paths E2E Flow", () => {
     page.once("dialog", async (dialog) => {
       await dialog.accept();
     });
-    const updatedCard = page.locator(".border", { hasText: editedTitle });
+    const updatedCard = page.locator(`[data-testid="learning-path-card-${createdPathId}"]`);
     await updatedCard.getByRole("button", { name: "Delete" }).click();
 
     // 6. Verify card is removed from list
@@ -104,7 +109,7 @@ test.describe("Learning Paths E2E Flow", () => {
     createdPathId = null; // already deleted cleanly
   });
 
-  test("can view detail page, add bookmark item, track completion, and reorder", async ({ page }) => {
+  test("can view detail page, add YouTube video tutorial bookmark, verify safe link, track progress, reorder, and persist after reload", async ({ page }) => {
     // 1. Create a learning path via page.request
     const pathRes = await page.request.post("/api/learning-paths", {
       data: {
@@ -121,21 +126,37 @@ test.describe("Learning Paths E2E Flow", () => {
     const pathJson = await pathRes.json();
     createdPathId = pathJson.data.learning_path.id;
 
-    // 2. Create a test bookmark via page.request if none exist
-    const bmRes = await page.request.post("/api/bookmarks", {
+    // 2. Create two test bookmarks (representing a YouTube video and tutorial) via page.request
+    const tutorialUrl1 = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+    const tutorialTitle1 = `YouTube Tutorial ${Date.now()}`;
+    const bmRes1 = await page.request.post("/api/bookmarks", {
       data: {
-        title: `E2E Bookmark ${Date.now()}`,
-        url: "https://example.com/playwright-test",
-        tags: ["e2e", "test"],
+        title: tutorialTitle1,
+        url: tutorialUrl1,
+        tags: ["video", "youtube", "tutorial"],
       },
     });
-    let bookmarkId: string | null = null;
-    if (bmRes.ok()) {
-      const bmJson = await bmRes.json();
-      bookmarkId = bmJson.data.id;
-    } else {
-      const bmErr = await bmRes.json().catch(() => null);
-      console.error("Failed to create test bookmark via API:", bmRes.status(), bmErr);
+
+    const tutorialUrl2 = "https://nextjs.org/docs/app";
+    const tutorialTitle2 = `Next.js Docs ${Date.now()}`;
+    const bmRes2 = await page.request.post("/api/bookmarks", {
+      data: {
+        title: tutorialTitle2,
+        url: tutorialUrl2,
+        tags: ["nextjs", "docs"],
+      },
+    });
+
+    let bookmarkId1: string | null = null;
+    let bookmarkId2: string | null = null;
+
+    if (bmRes1.ok()) {
+      const bmJson1 = await bmRes1.json();
+      bookmarkId1 = bmJson1.data.id;
+    }
+    if (bmRes2.ok()) {
+      const bmJson2 = await bmRes2.json();
+      bookmarkId2 = bmJson2.data.id;
     }
 
     try {
@@ -144,30 +165,74 @@ test.describe("Learning Paths E2E Flow", () => {
       await expect(page.getByRole("heading", { name: uniqueTitle })).toBeVisible();
       await expect(page.locator('[data-testid="progress-bar"]')).toBeVisible();
 
-      // 4. If bookmark is available in dropdown, add it to learning path
+      // 4. Add the first bookmark (YouTube video) via the dropdown
       const select = page.locator("select");
-      const optionCount = await select.locator("option").count();
+      await select.selectOption(bookmarkId1!);
+      await page.getByRole("button", { name: /Add to Path/i }).click();
 
-      if (optionCount > 1) {
-        // Select first available bookmark
-        await select.selectOption({ index: 1 });
-        await page.getByRole("button", { name: "Add" }).click();
+      // Verify the item card appears with correct attributes
+      const item1 = page.locator('[data-testid="learning-path-item"]', { hasText: tutorialTitle1 });
+      await expect(item1).toBeVisible();
 
-        // Verify item card is displayed
-        const toggleBtn = page.getByRole("button", { name: "Mark" });
-        await expect(toggleBtn).toBeVisible();
+      // Verify domain context is shown
+      await expect(item1).toContainText("youtube.com");
 
-        // 5. Toggle completion
-        await toggleBtn.click();
-        await expect(page.getByRole("button", { name: "Done" })).toBeVisible();
+      // Verify resource title link and explicit 'Open Resource ↗' link have safe attributes
+      const titleLink = item1.getByTestId("resource-title-link");
+      await expect(titleLink).toHaveAttribute("href", tutorialUrl1);
+      await expect(titleLink).toHaveAttribute("target", "_blank");
+      await expect(titleLink).toHaveAttribute("rel", "noopener noreferrer");
 
-        // Progress bar should reflect completed state
-        await expect(page.locator('[data-testid="progress-bar"] > div')).toHaveCSS("width", /.+/);
-      }
+      const openResourceLink = item1.getByTestId("open-resource-link");
+      await expect(openResourceLink).toHaveAttribute("href", tutorialUrl1);
+      await expect(openResourceLink).toHaveAttribute("target", "_blank");
+      await expect(openResourceLink).toHaveAttribute("rel", "noopener noreferrer");
+
+      // 5. Add second bookmark
+      await select.selectOption(bookmarkId2!);
+      await page.getByRole("button", { name: /Add to Path/i }).click();
+
+      const item2 = page.locator('[data-testid="learning-path-item"]', { hasText: tutorialTitle2 });
+      await expect(item2).toBeVisible();
+
+      // 6. Toggle completion on first item
+      const toggleBtn1 = item1.getByTestId("toggle-completion-button");
+      await expect(toggleBtn1).toHaveText("Mark");
+      await toggleBtn1.click();
+      await expect(toggleBtn1).toHaveText("Done");
+
+      // Progress bar reflects completion
+      await expect(page.locator('[data-testid="progress-bar"] > div')).toHaveCSS("width", /.+/);
+
+      // 7. Reorder: move the second item up
+      const moveUpBtn2 = item2.getByRole("button", { name: "Move item up" });
+      await moveUpBtn2.click();
+
+      // Wait for UI to reflect reordered items before reloading
+      const items = page.locator('[data-testid="learning-path-item"]');
+      await expect(items.first()).toContainText(tutorialTitle2);
+
+      // 8. Reload page to verify persistence across reloads
+      await page.reload();
+      await expect(page.getByRole("heading", { name: uniqueTitle })).toBeVisible();
+
+      // Verify items persist
+      const reloadedItems = page.locator('[data-testid="learning-path-item"]');
+      await expect(reloadedItems).toHaveCount(2);
+
+      // Verify first item is now the second tutorial (moved up)
+      await expect(reloadedItems.first()).toContainText(tutorialTitle2);
+
+      // Verify completion state persisted
+      const reloadedItem1 = page.locator('[data-testid="learning-path-item"]', { hasText: tutorialTitle1 });
+      await expect(reloadedItem1.getByTestId("toggle-completion-button")).toHaveText("Done");
     } finally {
-      // Clean up test bookmark
-      if (bookmarkId) {
-        await page.request.delete(`/api/bookmarks/${bookmarkId}`).catch(() => {});
+      // Clean up test bookmarks
+      if (bookmarkId1) {
+        await page.request.delete(`/api/bookmarks/${bookmarkId1}`).catch(() => {});
+      }
+      if (bookmarkId2) {
+        await page.request.delete(`/api/bookmarks/${bookmarkId2}`).catch(() => {});
       }
     }
   });
