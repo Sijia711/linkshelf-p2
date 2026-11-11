@@ -12,7 +12,7 @@ import LearningPathItemCard from '@/app/components/LearningPathItemCard';
 
 function ProgressBar({ percentage }: { percentage: number }) {
   return (
-    <div className="w-full bg-gray-200 rounded h-2 mt-2">
+    <div className="w-full bg-gray-200 rounded h-2 mt-2" data-testid="progress-bar">
       <div className="bg-indigo-600 h-2 rounded" style={{ width: `${percentage}%` }} />
     </div>
   );

@@ -46,12 +46,12 @@ function LearningPathForm({ initial, onCancel, onSubmit }: { initial?: { title: 
       <h2 className="text-xl mb-2">{initial ? 'Edit Learning Path' : 'Create New Learning Path'}</h2>
       {error && <p className="text-red-600 mb-2">{error}</p>}
       <div className="mb-2">
-        <label className="block text-sm font-medium">Title</label>
-        <input className="w-full border rounded p-1" value={title} onChange={(e) => setTitle(e.target.value)} required />
+        <label htmlFor="lp-title" className="block text-sm font-medium">Title</label>
+        <input id="lp-title" className="w-full border rounded p-1" value={title} onChange={(e) => setTitle(e.target.value)} required />
       </div>
       <div className="mb-2">
-        <label className="block text-sm font-medium">Description (optional)</label>
-        <textarea className="w-full border rounded p-1" value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label htmlFor="lp-description" className="block text-sm font-medium">Description (optional)</label>
+        <textarea id="lp-description" className="w-full border rounded p-1" value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <div className="flex gap-2">
         <button type="submit" className="px-3 py-1 bg-indigo-600 text-white rounded">Save</button>
