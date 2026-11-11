@@ -96,8 +96,9 @@ export async function POST(request: Request, { params }: RouteContext) {
 
   const nextPosition = maxRow ? maxRow.position + 1 : 0;
 
-  // Insert the new item
-  const { data: item, error: insertError } = await supabase
+  // Insert the new item.
+  // Gracefully handles environments before migration 004 is applied (error 42703: column does not exist).
+  let { data: item, error: insertError } = await supabase
     .from("learning_path_items")
     .insert({
       learning_path_id: learningPathId,
@@ -105,9 +106,31 @@ export async function POST(request: Request, { params }: RouteContext) {
       user_id: user.id,
       position: nextPosition,
       is_completed: false,
+      progress_percentage: 0,
     })
     .select()
     .single();
+
+  if (
+    insertError &&
+    (insertError.code === "42703" ||
+      insertError.code === "PGRST204" ||
+      (insertError.message && insertError.message.includes("progress_percentage")))
+  ) {
+    const fallback = await supabase
+      .from("learning_path_items")
+      .insert({
+        learning_path_id: learningPathId,
+        bookmark_id: bookmarkId,
+        user_id: user.id,
+        position: nextPosition,
+        is_completed: false,
+      })
+      .select()
+      .single();
+    item = fallback.data;
+    insertError = fallback.error;
+  }
 
   if (insertError) {
     // Handle unique constraint violation from DB (race condition safety)
@@ -121,5 +144,14 @@ export async function POST(request: Request, { params }: RouteContext) {
     return jsonError("INTERNAL_ERROR", "Failed to add bookmark to learning path.", 500);
   }
 
-  return jsonSuccess({ item }, 201);
+  const returnedItem = item
+    ? {
+        ...item,
+        progress_percentage:
+          (item as { progress_percentage?: number }).progress_percentage ??
+          (item.is_completed ? 100 : 0),
+      }
+    : item;
+
+  return jsonSuccess({ item: returnedItem }, 201);
 }

@@ -110,88 +110,70 @@ export async function PUT(request: Request, { params }: RouteContext) {
     );
   }
 
-  // Upsert the single shared notebook for this learning path.
-  // Note: In PostgreSQL, INSERT ... ON CONFLICT DO UPDATE requires table-level UPDATE privilege.
-  // We first attempt upsert; if table privileges return 42501 (e.g. before migration 004 is applied),
-  // we seamlessly fall back to an update-then-insert pattern with unique constraint conflict handling.
-  let { data: note, error: dbError } = await supabase
+  // Save the single shared notebook for this learning path.
+  // Design: Rather than table-level upsert (which requires broad UPDATE table privileges),
+  // we first attempt to UPDATE the existing row (common path for autosave/editing).
+  // If the note does not yet exist, we INSERT it.
+  // If a concurrent request created the note in between, unique conflict 23505 retries UPDATE.
+  // This preserves column-level least privilege: GRANT UPDATE (content, updated_at).
+  const { data: updatedNote, error: updateError } = await supabase
     .from("learning_notes")
-    .upsert(
-      {
+    .update({
+      content: validation.data!,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("learning_path_id", pathId)
+    .eq("user_id", user.id)
+    .select()
+    .maybeSingle();
+
+  if (updateError) {
+    console.error("Failed to update learning note:", updateError);
+    return jsonError("INTERNAL_ERROR", "Failed to save learning path notebook.", 500);
+  }
+
+  let note = updatedNote;
+
+  // If no existing note was found to update, insert the initial note
+  if (!note) {
+    const { data: insertedNote, error: insertError } = await supabase
+      .from("learning_notes")
+      .insert({
         learning_path_id: pathId,
         user_id: user.id,
         content: validation.data!,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "learning_path_id" }
-    )
-    .select()
-    .single();
-
-  if (dbError && dbError.code === "42501") {
-    // Fallback: update existing note if present
-    const { data: updatedNote, error: updateError } = await supabase
-      .from("learning_notes")
-      .update({
-        content: validation.data!,
-        updated_at: new Date().toISOString(),
       })
-      .eq("learning_path_id", pathId)
-      .eq("user_id", user.id)
       .select()
-      .maybeSingle();
+      .single();
 
-    if (!updateError && updatedNote) {
-      note = updatedNote;
-      dbError = null;
-    } else if (!updateError && !updatedNote) {
-      // Row did not exist yet; insert new note
-      const { data: insertedNote, error: insertError } = await supabase
+    if (insertedNote) {
+      note = insertedNote;
+    } else if (
+      insertError &&
+      (insertError.code === "23505" || insertError.message?.includes("duplicate key"))
+    ) {
+      // Concurrency race: another request inserted the initial note simultaneously; retry update
+      const { data: retriedNote, error: retryError } = await supabase
         .from("learning_notes")
-        .insert({
-          learning_path_id: pathId,
-          user_id: user.id,
+        .update({
           content: validation.data!,
+          updated_at: new Date().toISOString(),
         })
+        .eq("learning_path_id", pathId)
+        .eq("user_id", user.id)
         .select()
         .single();
 
-      if (!insertError && insertedNote) {
-        note = insertedNote;
-        dbError = null;
-      } else if (
-        insertError &&
-        (insertError.code === "23505" || insertError.message?.includes("duplicate key"))
-      ) {
-        // Concurrency conflict: another request inserted concurrently; retry update
-        const { data: retriedNote, error: retryError } = await supabase
-          .from("learning_notes")
-          .update({
-            content: validation.data!,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("learning_path_id", pathId)
-          .eq("user_id", user.id)
-          .select()
-          .single();
-
-        if (!retryError && retriedNote) {
-          note = retriedNote;
-          dbError = null;
-        } else {
-          dbError = retryError;
-        }
-      } else {
-        dbError = insertError;
+      if (retryError || !retriedNote) {
+        console.error("Failed to update learning note after concurrency conflict:", retryError);
+        return jsonError("INTERNAL_ERROR", "Failed to save learning path notebook.", 500);
       }
-    } else {
-      dbError = updateError;
-    }
-  }
 
-  if (dbError || !note) {
-    console.error("Failed to save learning note:", dbError);
-    return jsonError("INTERNAL_ERROR", "Failed to save learning path notebook.", 500);
+      note = retriedNote;
+    } else {
+      console.error("Failed to insert learning note:", insertError);
+      return jsonError("INTERNAL_ERROR", "Failed to save learning path notebook.", 500);
+    }
   }
 
   return jsonSuccess({ note: note as LearningNote }, 200);

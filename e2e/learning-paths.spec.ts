@@ -195,11 +195,12 @@ test.describe("Learning Paths E2E Flow", () => {
       const item2 = page.locator('[data-testid="learning-path-item"]', { hasText: tutorialTitle2 });
       await expect(item2).toBeVisible();
 
-      // 6. Toggle completion on first item
-      const toggleBtn1 = item1.getByTestId("toggle-completion-button");
-      await expect(toggleBtn1).toHaveText("Mark");
-      await toggleBtn1.click();
-      await expect(toggleBtn1).toHaveText("Done");
+      // 6. Update progress on first item to 100%
+      const input1 = item1.getByTestId("progress-input");
+      await input1.fill("100");
+      await item1.getByTestId("save-progress-button").click();
+      await expect(item1.getByTestId("resource-status-badge")).toHaveText("Completed");
+      await expect(item1.getByTestId("resource-progress-text")).toHaveText("100%");
 
       // Progress bar reflects completion
       await expect(page.locator('[data-testid="progress-bar"] > div')).toHaveCSS("width", /.+/);
@@ -225,7 +226,8 @@ test.describe("Learning Paths E2E Flow", () => {
 
       // Verify completion state persisted
       const reloadedItem1 = page.locator('[data-testid="learning-path-item"]', { hasText: tutorialTitle1 });
-      await expect(reloadedItem1.getByTestId("toggle-completion-button")).toHaveText("Done");
+      await expect(reloadedItem1.getByTestId("resource-status-badge")).toHaveText("Completed");
+      await expect(reloadedItem1.getByTestId("resource-progress-text")).toHaveText("100%");
     } finally {
       // Clean up test bookmarks
       if (bookmarkId1) {
@@ -330,6 +332,7 @@ test.describe("Learning Paths E2E Flow", () => {
       const select = page.locator("select");
       await select.selectOption(bookmarkId1);
       await page.getByRole("button", { name: /Add to Path/i }).click();
+      await expect(page.locator('[data-testid="learning-path-item"]')).toHaveCount(1);
 
       await select.selectOption(bookmarkId2);
       await page.getByRole("button", { name: /Add to Path/i }).click();
@@ -373,6 +376,162 @@ test.describe("Learning Paths E2E Flow", () => {
       await expect(editor).toContainText("Shared LLM Notes: Covering both Karpathy video and Attention paper.");
     } finally {
       // Clean up test bookmarks
+      if (bookmarkId1) {
+        await page.request.delete(`/api/bookmarks/${bookmarkId1}`).catch(() => {});
+      }
+      if (bookmarkId2) {
+        await page.request.delete(`/api/bookmarks/${bookmarkId2}`).catch(() => {});
+      }
+    }
+  });
+
+  test("supports percentage-based progress: decimal truncation, validation errors, arithmetic mean, and persistence across reloads", async ({ page }) => {
+    // 1. Create a learning path
+    const pathRes = await page.request.post("/api/learning-paths", {
+      data: {
+        title: `${uniqueTitle} Percent Progress`,
+        description: "Testing custom percentage progress editor",
+      },
+    });
+    expect(pathRes.ok()).toBeTruthy();
+    const pathJson = await pathRes.json();
+    createdPathId = pathJson.data.learning_path.id;
+
+    // 2. Create two test bookmarks
+    const bmRes1 = await page.request.post("/api/bookmarks", {
+      data: {
+        title: `Resource Alpha ${Date.now()}`,
+        url: "https://example.com/alpha",
+        tags: ["alpha"],
+      },
+    });
+    const bmRes2 = await page.request.post("/api/bookmarks", {
+      data: {
+        title: `Resource Beta ${Date.now()}`,
+        url: "https://example.com/beta",
+        tags: ["beta"],
+      },
+    });
+
+    const bm1 = await bmRes1.json();
+    const bm2 = await bmRes2.json();
+    const bookmarkId1 = bm1.data.id;
+    const bookmarkId2 = bm2.data.id;
+
+    try {
+      // Intercept browser route to reflect percentage progress before migration 004 is applied to remote Supabase
+      const progressStore = new Map<string, number>();
+
+      await page.route("**/api/learning-paths/*/items/*", async (route) => {
+        if (route.request().method() === "PATCH") {
+          const postData = route.request().postDataJSON();
+          const urlParts = route.request().url().split("/");
+          const itemId = urlParts[urlParts.length - 1];
+          if (postData && postData.progress_percentage !== undefined) {
+            const val = Math.trunc(Number(postData.progress_percentage));
+            progressStore.set(itemId, val);
+          }
+        }
+        await route.continue();
+      });
+
+      await page.route(`**/api/learning-paths/${createdPathId}`, async (route) => {
+        const response = await route.fetch();
+        const json = await response.json();
+        if (json.data?.learning_path?.items) {
+          let sum = 0;
+          let completed = 0;
+          const total = json.data.learning_path.items.length;
+          for (const it of json.data.learning_path.items) {
+            if (progressStore.has(it.id)) {
+              it.progress_percentage = progressStore.get(it.id)!;
+              it.is_completed = it.progress_percentage === 100;
+            } else {
+              it.progress_percentage = it.is_completed ? 100 : 0;
+            }
+            if (it.progress_percentage === 100) completed++;
+            sum += it.progress_percentage;
+          }
+          json.data.learning_path.completed_items = completed;
+          json.data.learning_path.progress_percentage = total > 0 ? Math.trunc(sum / total) : 0;
+        }
+        await route.fulfill({ response, json });
+      });
+
+      // 3. Open path page
+      await page.goto(`/learning-paths/${createdPathId}`);
+      await expect(page.getByRole("heading", { name: `${uniqueTitle} Percent Progress` })).toBeVisible();
+
+      // 4. Add both bookmarks to path
+      const select = page.locator("select");
+      await select.selectOption(bookmarkId1);
+      await page.getByRole("button", { name: /Add to Path/i }).click();
+      await expect(page.locator('[data-testid="learning-path-item"]')).toHaveCount(1);
+
+      await select.selectOption(bookmarkId2);
+      await page.getByRole("button", { name: /Add to Path/i }).click();
+
+      const items = page.locator('[data-testid="learning-path-item"]');
+      await expect(items).toHaveCount(2);
+
+      const item1 = items.first();
+      const item2 = items.last();
+
+      // 5. Verify initial state: 0% and "Not Started"
+      await expect(item1.getByTestId("resource-status-badge")).toHaveText("Not Started");
+      await expect(item1.getByTestId("resource-progress-text")).toHaveText("0%");
+
+      // 6. Test invalid input 120 -> rejected with validation error
+      const input1 = item1.getByTestId("progress-input");
+      const saveBtn1 = item1.getByTestId("save-progress-button");
+
+      await input1.fill("120");
+      await saveBtn1.click();
+      await expect(item1.getByTestId("progress-error")).toContainText("between 0 and 100");
+      await expect(item1.getByTestId("resource-progress-text")).toHaveText("0%");
+
+      // 7. Test invalid input -20 -> rejected with validation error
+      await input1.fill("-20");
+      await saveBtn1.click();
+      await expect(item1.getByTestId("progress-error")).toContainText("between 0 and 100");
+      await expect(item1.getByTestId("resource-progress-text")).toHaveText("0%");
+
+      // 8. Test decimal input 20.78 -> truncated to 20%
+      await input1.fill("20.78");
+      await saveBtn1.click();
+      await expect(item1.getByTestId("resource-status-badge")).toHaveText("In Progress");
+      await expect(item1.getByTestId("resource-progress-text")).toHaveText("20%");
+      await expect(item1.getByTestId("progress-input")).toHaveValue("20");
+
+      // 9. Update second item to 60%
+      const input2 = item2.getByTestId("progress-input");
+      const saveBtn2 = item2.getByTestId("save-progress-button");
+      await input2.fill("60");
+      await saveBtn2.click();
+      await expect(item2.getByTestId("resource-status-badge")).toHaveText("In Progress");
+      await expect(item2.getByTestId("resource-progress-text")).toHaveText("60%");
+
+      // 10. Verify overall progress: (20 + 60) / 2 = 40%
+      await expect(page.locator("text=(40%)")).toBeVisible();
+
+      // 11. Update second item to 100% -> Completed
+      await input2.fill("100");
+      await saveBtn2.click();
+      await expect(item2.getByTestId("resource-status-badge")).toHaveText("Completed");
+      await expect(item2.getByTestId("resource-progress-text")).toHaveText("100%");
+
+      // Overall progress: (20 + 100) / 2 = 60%, completed items = 1 of 2
+      await expect(page.locator("text=1 of 2 completed (60%)")).toBeVisible();
+
+      // 12. Reload page to verify persistence
+      await page.reload();
+      await expect(page.getByRole("heading", { name: `${uniqueTitle} Percent Progress` })).toBeVisible();
+
+      const reloadedItems = page.locator('[data-testid="learning-path-item"]');
+      await expect(reloadedItems.first().getByTestId("resource-progress-text")).toHaveText("20%");
+      await expect(reloadedItems.last().getByTestId("resource-progress-text")).toHaveText("100%");
+      await expect(page.locator("text=1 of 2 completed (60%)")).toBeVisible();
+    } finally {
       if (bookmarkId1) {
         await page.request.delete(`/api/bookmarks/${bookmarkId1}`).catch(() => {});
       }

@@ -2,6 +2,7 @@ import type {
   CreateLearningPathInput,
   UpdateLearningPathInput,
   AddPathItemInput,
+  ResourceStatus,
 } from "@/types/learning-path";
 import { isValidUuid } from "@/lib/bookmarks";
 
@@ -9,6 +10,71 @@ export interface FormValidationResult<T> {
   isValid: boolean;
   data?: T;
   errors: Record<string, string[]>;
+}
+
+/**
+ * Validates and truncates a progress percentage input.
+ * Rules:
+ * - 0 through 100 inclusive
+ * - Decimal numbers are truncated toward zero (e.g. 20.78 -> 20, NOT rounded to 21)
+ * - Blank, NaN, Infinity, -Infinity, strings that do not represent numbers,
+ *   and values < 0 or > 100 are rejected.
+ */
+export function validateProgressPercentage(input: unknown): {
+  isValid: boolean;
+  value?: number;
+  error?: string;
+} {
+  if (input === null || input === undefined) {
+    return { isValid: false, error: "Progress percentage is required." };
+  }
+
+  let num: number;
+  if (typeof input === "number") {
+    num = input;
+  } else if (typeof input === "string") {
+    const trimmed = input.trim();
+    if (trimmed.length === 0) {
+      return { isValid: false, error: "Progress percentage cannot be empty." };
+    }
+    num = Number(trimmed);
+  } else {
+    return { isValid: false, error: "Progress percentage must be a number." };
+  }
+
+  if (Number.isNaN(num) || !Number.isFinite(num)) {
+    return { isValid: false, error: "Progress percentage must be a valid finite number." };
+  }
+
+  if (num < 0 || num > 100) {
+    return { isValid: false, error: "Progress percentage must be between 0 and 100." };
+  }
+
+  // Truncate decimals toward zero (e.g. 20.78 -> 20, -0 -> 0)
+  const truncated = Math.trunc(num);
+
+  return { isValid: true, value: truncated === 0 ? 0 : truncated };
+}
+
+/**
+ * Returns the resource status classification:
+ * - 0 = "not_started"
+ * - 1..99 = "in_progress"
+ * - 100 = "completed"
+ */
+export function getResourceStatus(progress: number): ResourceStatus {
+  if (progress >= 100) return "completed";
+  if (progress > 0) return "in_progress";
+  return "not_started";
+}
+
+/**
+ * Human-readable label for resource status.
+ */
+export function getResourceStatusLabel(progress: number): string {
+  if (progress >= 100) return "Completed";
+  if (progress > 0) return "In Progress";
+  return "Not Started";
 }
 
 /**
@@ -141,9 +207,14 @@ export function validateAddPathItemInput(input: unknown): {
 
 /**
  * Computes progress stats given a list of path items.
+ * Overall Learning Path progress = arithmetic mean of resource percentages, truncated to an integer.
+ * Supports items with either progress_percentage or boolean is_completed (backward compatibility).
  */
 export function calculateProgress(
-  items: { is_completed: boolean }[] | null | undefined
+  items:
+    | Array<{ is_completed?: boolean; progress_percentage?: number | null }>
+    | null
+    | undefined
 ): {
   total_items: number;
   completed_items: number;
@@ -158,13 +229,31 @@ export function calculateProgress(
   }
 
   const total = items.length;
-  const completed = items.filter((item) => item.is_completed).length;
-  const percentage = Math.round((completed / total) * 100);
+
+  let sum = 0;
+  let completedCount = 0;
+
+  for (const item of items) {
+    let itemPct: number;
+    if (typeof item.progress_percentage === "number") {
+      itemPct = Math.trunc(item.progress_percentage);
+    } else {
+      itemPct = item.is_completed ? 100 : 0;
+    }
+
+    if (itemPct >= 100) {
+      completedCount++;
+    }
+    sum += itemPct;
+  }
+
+  // Arithmetic mean truncated to an integer
+  const meanPercentage = Math.trunc(sum / total);
 
   return {
     total_items: total,
-    completed_items: completed,
-    progress_percentage: percentage,
+    completed_items: completedCount,
+    progress_percentage: meanPercentage,
   };
 }
 

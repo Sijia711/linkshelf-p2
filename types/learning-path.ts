@@ -31,6 +31,8 @@ export interface LearningPathItem {
   user_id: string;
   position: number;
   is_completed: boolean;
+  /** Completion progress as an integer percentage (0 through 100) */
+  progress_percentage: number;
   completed_at: string | null;
   created_at: string;
   updated_at: string;
@@ -76,8 +78,15 @@ export interface AddPathItemInput {
  */
 export interface UpdatePathItemInput {
   is_completed?: boolean;
+  progress_percentage?: number;
   position?: number;
 }
+
+/**
+ * Status of an individual resource based on progress percentage.
+ * 0 = not_started, 1-99 = in_progress, 100 = completed
+ */
+export type ResourceStatus = "not_started" | "in_progress" | "completed";
 
 /**
  * Tiptap structured JSON document node representation.

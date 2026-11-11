@@ -94,6 +94,19 @@ export default function LearningPathDetailPage() {
     }
   };
 
+  const handleUpdateProgress = async (itemId: string, progress: number) => {
+    const res = await fetch(`/api/learning-paths/${id}/items/${itemId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ progress_percentage: progress }),
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      alert(json.error?.message ?? "Progress update failed");
+    }
+    await refresh();
+  };
+
   const handleToggle = async (itemId: string, completed: boolean) => {
     const res = await fetch(`/api/learning-paths/${id}/items/${itemId}`, {
       method: "PATCH",
@@ -261,6 +274,7 @@ export default function LearningPathDetailPage() {
                       index={index}
                       isFirst={index === 0}
                       isLast={index === sortedItems.length - 1}
+                      onUpdateProgress={handleUpdateProgress}
                       onToggle={handleToggle}
                       onMove={handleMove}
                       onDelete={handleDelete}

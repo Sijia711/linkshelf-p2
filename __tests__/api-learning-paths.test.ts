@@ -796,6 +796,205 @@ describe("Learning Paths REST API Route Handlers", () => {
       expect(json.data.item.is_completed).toBe(true);
     });
 
+    it("returns 200 updating progress_percentage to 30", async () => {
+      const updatedItem = {
+        id: ITEM_ID,
+        learning_path_id: PATH_ID,
+        bookmark_id: BM_ID,
+        user_id: USER_ID,
+        position: 0,
+        progress_percentage: 30,
+        is_completed: false,
+        completed_at: null,
+        created_at: "2026-11-09T00:00:00Z",
+        updated_at: "2026-11-09T01:00:00Z",
+      };
+
+      let callCount = 0;
+      const updateMock = vi.fn().mockReturnThis();
+      mockSupabase.from.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: PATH_ID }, error: null }),
+          };
+        }
+        if (callCount === 2) {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: { id: ITEM_ID, position: 0, progress_percentage: 0, is_completed: false },
+              error: null,
+            }),
+          };
+        }
+        return {
+          update: updateMock,
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: updatedItem, error: null }),
+        };
+      });
+
+      const res = await updateItem(makeRequest("PATCH", { progress_percentage: 30 }), { params });
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.data.item.progress_percentage).toBe(30);
+      expect(json.data.item.is_completed).toBe(false);
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          progress_percentage: 30,
+          is_completed: false,
+          completed_at: null,
+        })
+      );
+    });
+
+    it("returns 200 updating progress_percentage to 100 and marks is_completed=true", async () => {
+      const updatedItem = {
+        id: ITEM_ID,
+        learning_path_id: PATH_ID,
+        bookmark_id: BM_ID,
+        user_id: USER_ID,
+        position: 0,
+        progress_percentage: 100,
+        is_completed: true,
+        completed_at: "2026-11-09T01:00:00Z",
+        created_at: "2026-11-09T00:00:00Z",
+        updated_at: "2026-11-09T01:00:00Z",
+      };
+
+      let callCount = 0;
+      const updateMock = vi.fn().mockReturnThis();
+      mockSupabase.from.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: PATH_ID }, error: null }),
+          };
+        }
+        if (callCount === 2) {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: { id: ITEM_ID, position: 0, progress_percentage: 50, is_completed: false },
+              error: null,
+            }),
+          };
+        }
+        return {
+          update: updateMock,
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: updatedItem, error: null }),
+        };
+      });
+
+      const res = await updateItem(makeRequest("PATCH", { progress_percentage: 100 }), { params });
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.data.item.progress_percentage).toBe(100);
+      expect(json.data.item.is_completed).toBe(true);
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          progress_percentage: 100,
+          is_completed: true,
+        })
+      );
+    });
+
+    it("truncates decimal progress_percentage 20.78 to 20", async () => {
+      const updatedItem = {
+        id: ITEM_ID,
+        learning_path_id: PATH_ID,
+        bookmark_id: BM_ID,
+        user_id: USER_ID,
+        position: 0,
+        progress_percentage: 20,
+        is_completed: false,
+        completed_at: null,
+        created_at: "2026-11-09T00:00:00Z",
+        updated_at: "2026-11-09T01:00:00Z",
+      };
+
+      let callCount = 0;
+      const updateMock = vi.fn().mockReturnThis();
+      mockSupabase.from.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: { id: PATH_ID }, error: null }),
+          };
+        }
+        if (callCount === 2) {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: { id: ITEM_ID, position: 0, progress_percentage: 0 },
+              error: null,
+            }),
+          };
+        }
+        return {
+          update: updateMock,
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: updatedItem, error: null }),
+        };
+      });
+
+      const res = await updateItem(makeRequest("PATCH", { progress_percentage: 20.78 }), { params });
+      const json = await res.json();
+
+      expect(res.status).toBe(200);
+      expect(json.data.item.progress_percentage).toBe(20);
+      expect(updateMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          progress_percentage: 20,
+        })
+      );
+    });
+
+    it("rejects invalid progress_percentage values 120 and -20 with 400", async () => {
+      // Path found
+      mockSupabase.from.mockReturnValue({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: PATH_ID }, error: null }),
+      });
+
+      const res1 = await updateItem(makeRequest("PATCH", { progress_percentage: 120 }), { params });
+      expect(res1.status).toBe(400);
+
+      const res2 = await updateItem(makeRequest("PATCH", { progress_percentage: -20 }), { params });
+      expect(res2.status).toBe(400);
+    });
+
+    it("rejects non-numeric and blank progress_percentage with 400", async () => {
+      mockSupabase.from.mockReturnValue({
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        single: vi.fn().mockResolvedValue({ data: { id: PATH_ID }, error: null }),
+      });
+
+      const res1 = await updateItem(makeRequest("PATCH", { progress_percentage: "abc" }), { params });
+      expect(res1.status).toBe(400);
+
+      const res2 = await updateItem(makeRequest("PATCH", { progress_percentage: "" }), { params });
+      expect(res2.status).toBe(400);
+    });
+
     it("returns 400 when reordering item at boundary (direction=up at position 0)", async () => {
       const allItems = [{ id: ITEM_ID, position: 0 }];
 

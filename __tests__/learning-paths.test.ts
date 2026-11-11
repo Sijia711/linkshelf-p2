@@ -3,6 +3,9 @@ import {
   validateCreateLearningPathInput,
   validateUpdateLearningPathInput,
   validateAddPathItemInput,
+  validateProgressPercentage,
+  getResourceStatus,
+  getResourceStatusLabel,
   calculateProgress,
   reorderItems,
   extractDomain,
@@ -118,12 +121,37 @@ describe("Learning Paths Pure Helpers & Validation", () => {
       });
     });
 
-    it("should round percentage correctly", () => {
+    it("should calculate arithmetic mean of percentage items truncated to an integer", () => {
+      // 30% and 25%: sum = 55, mean = 27.5 -> truncated to 27% (NOT rounded to 28%)
+      const items1 = [
+        { progress_percentage: 30 },
+        { progress_percentage: 25 },
+      ];
+      expect(calculateProgress(items1)).toEqual({
+        total_items: 2,
+        completed_items: 0,
+        progress_percentage: 27,
+      });
+
+      // 100%, 100%, 99%: sum = 299, mean = 99.666 -> truncated to 99%
+      const items2 = [
+        { progress_percentage: 100 },
+        { progress_percentage: 100 },
+        { progress_percentage: 99 },
+      ];
+      expect(calculateProgress(items2)).toEqual({
+        total_items: 3,
+        completed_items: 2,
+        progress_percentage: 99,
+      });
+    });
+
+    it("should truncate percentage correctly toward zero", () => {
       const items = [
         { is_completed: true },
         { is_completed: false },
         { is_completed: false },
-      ]; // 1 / 3 = 33.33% -> 33%
+      ]; // 1 / 3 = 33.33% -> truncated to 33%
       expect(calculateProgress(items)).toEqual({
         total_items: 3,
         completed_items: 1,
@@ -138,6 +166,66 @@ describe("Learning Paths Pure Helpers & Validation", () => {
         completed_items: 2,
         progress_percentage: 100,
       });
+    });
+  });
+
+  describe("validateProgressPercentage", () => {
+    it("should accept valid integers 0, 30, 75, 100", () => {
+      expect(validateProgressPercentage(0)).toEqual({ isValid: true, value: 0 });
+      expect(validateProgressPercentage(30)).toEqual({ isValid: true, value: 30 });
+      expect(validateProgressPercentage(75)).toEqual({ isValid: true, value: 75 });
+      expect(validateProgressPercentage(100)).toEqual({ isValid: true, value: 100 });
+      expect(validateProgressPercentage("50")).toEqual({ isValid: true, value: 50 });
+    });
+
+    it("should truncate decimal inputs toward zero (e.g. 20.78 -> 20, NOT rounded to 21)", () => {
+      const res = validateProgressPercentage(20.78);
+      expect(res.isValid).toBe(true);
+      expect(res.value).toBe(20);
+
+      const strRes = validateProgressPercentage("20.78");
+      expect(strRes.isValid).toBe(true);
+      expect(strRes.value).toBe(20);
+    });
+
+    it("should reject numbers outside 0 through 100", () => {
+      expect(validateProgressPercentage(120).isValid).toBe(false);
+      expect(validateProgressPercentage(-20).isValid).toBe(false);
+      expect(validateProgressPercentage(100.1).isValid).toBe(false);
+      expect(validateProgressPercentage(-0.1).isValid).toBe(false);
+    });
+
+    it("should reject blank, NaN, Infinity, and non-numeric values", () => {
+      expect(validateProgressPercentage("").isValid).toBe(false);
+      expect(validateProgressPercentage("   ").isValid).toBe(false);
+      expect(validateProgressPercentage(NaN).isValid).toBe(false);
+      expect(validateProgressPercentage(Infinity).isValid).toBe(false);
+      expect(validateProgressPercentage(-Infinity).isValid).toBe(false);
+      expect(validateProgressPercentage("abc").isValid).toBe(false);
+      expect(validateProgressPercentage(null).isValid).toBe(false);
+      expect(validateProgressPercentage(undefined).isValid).toBe(false);
+      expect(validateProgressPercentage({})).toEqual(expect.objectContaining({ isValid: false }));
+    });
+  });
+
+  describe("getResourceStatus and getResourceStatusLabel", () => {
+    it("classifies 0 as not_started", () => {
+      expect(getResourceStatus(0)).toBe("not_started");
+      expect(getResourceStatusLabel(0)).toBe("Not Started");
+    });
+
+    it("classifies 1..99 as in_progress", () => {
+      expect(getResourceStatus(1)).toBe("in_progress");
+      expect(getResourceStatusLabel(1)).toBe("In Progress");
+      expect(getResourceStatus(50)).toBe("in_progress");
+      expect(getResourceStatusLabel(50)).toBe("In Progress");
+      expect(getResourceStatus(99)).toBe("in_progress");
+      expect(getResourceStatusLabel(99)).toBe("In Progress");
+    });
+
+    it("classifies 100 as completed", () => {
+      expect(getResourceStatus(100)).toBe("completed");
+      expect(getResourceStatusLabel(100)).toBe("Completed");
     });
   });
 
