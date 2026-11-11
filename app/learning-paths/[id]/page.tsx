@@ -7,6 +7,7 @@ import type { LearningPathDetail } from "@/types/learning-path";
 import type { Bookmark } from "@/types/bookmark";
 import LoadingSpinner from "@/app/components/LoadingSpinner";
 import LearningPathItemCard from "@/app/components/LearningPathItemCard";
+import LearningPathNotebook from "@/app/components/LearningPathNotebook";
 import { extractDomain } from "@/lib/learning-paths";
 
 function ProgressBar({ percentage }: { percentage: number }) {
@@ -26,6 +27,7 @@ function ProgressBar({ percentage }: { percentage: number }) {
 
 export default function LearningPathDetailPage() {
   const { id } = useParams() as { id: string };
+  const [activeTab, setActiveTab] = useState<"resources" | "notes">("resources");
   const [path, setPath] = useState<LearningPathDetail | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,98 +190,151 @@ export default function LearningPathDetailPage() {
           </div>
         </div>
 
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold text-gray-900">Ordered Resources</h2>
-            <span className="text-xs text-gray-500">
-              {items.length} {items.length === 1 ? "resource" : "resources"}
+        {/* Section Tabs */}
+        <div className="flex border-b border-gray-200 mb-6" role="tablist" aria-label="Learning Path Views">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "resources"}
+            onClick={() => setActiveTab("resources")}
+            className={`py-3 px-5 text-sm font-semibold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+              activeTab === "resources"
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+            data-testid="tab-resources"
+          >
+            <span>Resources</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                activeTab === "resources"
+                  ? "bg-indigo-100 text-indigo-800"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {items.length}
             </span>
-          </div>
+          </button>
 
-          {sortedItems.length === 0 ? (
-            <div className="bg-white border border-dashed border-gray-300 rounded-lg p-6 text-center text-gray-600 mb-6">
-              <p className="font-medium text-gray-800">No resources added to this learning path yet.</p>
-              <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
-                Add bookmarks below to turn this path into an ordered playlist for videos, articles, and documentation.
-              </p>
-            </div>
-          ) : (
-            <div>
-              {sortedItems.map((item, index) => (
-                <LearningPathItemCard
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  isFirst={index === 0}
-                  isLast={index === sortedItems.length - 1}
-                  onToggle={handleToggle}
-                  onMove={handleMove}
-                  onDelete={handleDelete}
-                />
-              ))}
-            </div>
-          )}
-        </section>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "notes"}
+            onClick={() => setActiveTab("notes")}
+            className={`py-3 px-5 text-sm font-semibold border-b-2 transition flex items-center gap-2 cursor-pointer ${
+              activeTab === "notes"
+                ? "border-indigo-600 text-indigo-600"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+            }`}
+            data-testid="tab-notes"
+          >
+            <span>Shared Notes</span>
+            <span className="text-xs bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 font-medium">
+              Rich Text
+            </span>
+          </button>
+        </div>
 
-        <section className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
-          <h3 className="text-base font-bold text-gray-900 mb-2">Add Resource to Path</h3>
-          <p className="text-xs text-gray-500 mb-4">
-            Select an existing bookmark to append to your study playlist.
-          </p>
+        {activeTab === "resources" ? (
+          <>
+            <section className="mb-8">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-bold text-gray-900">Ordered Resources</h2>
+                <span className="text-xs text-gray-500">
+                  {items.length} {items.length === 1 ? "resource" : "resources"}
+                </span>
+              </div>
 
-          {bookmarks.length === 0 ? (
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-900">
-              <p className="font-medium">No bookmarks saved in LinkShelf yet</p>
-              <p className="mt-1 text-amber-800 text-xs sm:text-sm">
-                Learning paths organize your saved bookmarks into a step-by-step playlist. Please save your video tutorials or articles in your Bookmarks dashboard first.
+              {sortedItems.length === 0 ? (
+                <div className="bg-white border border-dashed border-gray-300 rounded-lg p-6 text-center text-gray-600 mb-6">
+                  <p className="font-medium text-gray-800">No resources added to this learning path yet.</p>
+                  <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
+                    Add bookmarks below to turn this path into an ordered playlist for videos, articles, and documentation.
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  {sortedItems.map((item, index) => (
+                    <LearningPathItemCard
+                      key={item.id}
+                      item={item}
+                      index={index}
+                      isFirst={index === 0}
+                      isLast={index === sortedItems.length - 1}
+                      onToggle={handleToggle}
+                      onMove={handleMove}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+              <h3 className="text-base font-bold text-gray-900 mb-2">Add Resource to Path</h3>
+              <p className="text-xs text-gray-500 mb-4">
+                Select an existing bookmark to append to your study playlist.
               </p>
-              <Link
-                href="/dashboard"
-                className="inline-block mt-3 text-sm text-indigo-700 font-semibold hover:underline"
-              >
-                Go to Dashboard to add bookmarks →
-              </Link>
-            </div>
-          ) : availableBookmarks.length === 0 ? (
-            <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-sm text-blue-900">
-              <p className="font-medium">All existing bookmarks are already in this learning path</p>
-              <p className="mt-1 text-blue-800 text-xs sm:text-sm">
-                To add more tutorials or articles, save new bookmarks in your Dashboard.
-              </p>
-              <Link
-                href="/dashboard"
-                className="inline-block mt-3 text-sm text-indigo-700 font-semibold hover:underline"
-              >
-                Add more bookmarks in Dashboard →
-              </Link>
-            </div>
-          ) : (
-            <form onSubmit={handleAddItem} className="flex flex-col sm:flex-row gap-2 sm:items-center">
-              <select
-                className="border border-gray-300 rounded-md p-2 text-sm flex-1 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                value={selectedBookmark}
-                onChange={(e) => setSelectedBookmark(e.target.value)}
-                required
-                disabled={adding}
-                aria-label="Select bookmark to add"
-              >
-                <option value="">Select a bookmark to add...</option>
-                {availableBookmarks.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.title} ({extractDomain(b.url)})
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed shrink-0 cursor-pointer"
-                disabled={adding || !selectedBookmark}
-              >
-                {adding ? "Adding..." : "Add to Path"}
-              </button>
-            </form>
-          )}
-        </section>
+
+              {bookmarks.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-md p-4 text-sm text-amber-900">
+                  <p className="font-medium">No bookmarks saved in LinkShelf yet</p>
+                  <p className="mt-1 text-amber-800 text-xs sm:text-sm">
+                    Learning paths organize your saved bookmarks into a step-by-step playlist. Please save your video tutorials or articles in your Bookmarks dashboard first.
+                  </p>
+                  <Link
+                    href="/dashboard"
+                    className="inline-block mt-3 text-sm text-indigo-700 font-semibold hover:underline"
+                  >
+                    Go to Dashboard to add bookmarks →
+                  </Link>
+                </div>
+              ) : availableBookmarks.length === 0 ? (
+                <div className="bg-blue-50 border border-blue-200 rounded-md p-4 text-sm text-blue-900">
+                  <p className="font-medium">All existing bookmarks are already in this learning path</p>
+                  <p className="mt-1 text-blue-800 text-xs sm:text-sm">
+                    To add more tutorials or articles, save new bookmarks in your Dashboard.
+                  </p>
+                  <Link
+                    href="/dashboard"
+                    className="inline-block mt-3 text-sm text-indigo-700 font-semibold hover:underline"
+                  >
+                    Add more bookmarks in Dashboard →
+                  </Link>
+                </div>
+              ) : (
+                <form onSubmit={handleAddItem} className="flex flex-col sm:flex-row gap-2 sm:items-center">
+                  <select
+                    className="border border-gray-300 rounded-md p-2 text-sm flex-1 bg-white focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    value={selectedBookmark}
+                    onChange={(e) => setSelectedBookmark(e.target.value)}
+                    required
+                    disabled={adding}
+                    aria-label="Select bookmark to add"
+                  >
+                    <option value="">Select a bookmark to add...</option>
+                    {availableBookmarks.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.title} ({extractDomain(b.url)})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium rounded-md shadow-sm transition disabled:opacity-60 disabled:cursor-not-allowed shrink-0 cursor-pointer"
+                    disabled={adding || !selectedBookmark}
+                  >
+                    {adding ? "Adding..." : "Add to Path"}
+                  </button>
+                </form>
+              )}
+            </section>
+          </>
+        ) : (
+          <section className="mb-8" data-testid="path-notebook-section">
+            <LearningPathNotebook pathId={id} pathTitle={title} />
+          </section>
+        )}
       </main>
     </div>
   );

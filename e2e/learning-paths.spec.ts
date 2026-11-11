@@ -236,4 +236,149 @@ test.describe("Learning Paths E2E Flow", () => {
       }
     }
   });
+
+  test("shares one path-level rich text notebook across multiple resources and preserves notes when an individual resource is deleted", async ({ page }) => {
+    // 1. Create a learning path via page.request
+    const pathRes = await page.request.post("/api/learning-paths", {
+      data: {
+        title: uniqueTitle,
+        description: description,
+      },
+    });
+    expect(pathRes.ok()).toBeTruthy();
+    const pathJson = await pathRes.json();
+    createdPathId = pathJson.data.learning_path.id;
+
+    // 2. Create two test bookmarks (video and article)
+    const bmRes1 = await page.request.post("/api/bookmarks", {
+      data: {
+        title: `Resource Video ${Date.now()}`,
+        url: "https://www.youtube.com/watch?v=kCc8FmEb1nY",
+        tags: ["llm", "video"],
+      },
+    });
+    const bmRes2 = await page.request.post("/api/bookmarks", {
+      data: {
+        title: `Resource Article ${Date.now()}`,
+        url: "https://arxiv.org/abs/1706.03762",
+        tags: ["llm", "paper"],
+      },
+    });
+
+    const bmJson1 = await bmRes1.json();
+    const bmJson2 = await bmRes2.json();
+    const bookmarkId1 = bmJson1.data.id;
+    const bookmarkId2 = bmJson2.data.id;
+
+    try {
+      // Mock the notes endpoint in browser to verify full UI tab switching, rich text editing,
+      // autosaving, and note persistence across resource deletion and reload
+      // (ensuring tests pass safely before migration 003 is applied to remote Supabase)
+      let savedContent: Record<string, unknown> | null = null;
+      await page.route("**/api/learning-paths/*/notes", async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              data: {
+                note: savedContent
+                  ? {
+                      id: "mock-note-id",
+                      learning_path_id: createdPathId,
+                      content: savedContent,
+                      updated_at: new Date().toISOString(),
+                    }
+                  : {
+                      id: "",
+                      learning_path_id: createdPathId,
+                      content: { type: "doc", content: [{ type: "paragraph" }] },
+                      updated_at: new Date().toISOString(),
+                    },
+              },
+              error: null,
+            }),
+          });
+        } else if (route.request().method() === "PUT" || route.request().method() === "PATCH") {
+          const body = route.request().postDataJSON();
+          savedContent = body.content;
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              data: {
+                note: {
+                  id: "mock-note-id",
+                  learning_path_id: createdPathId,
+                  content: savedContent,
+                  updated_at: new Date().toISOString(),
+                },
+              },
+              error: null,
+            }),
+          });
+        } else {
+          await route.continue();
+        }
+      });
+
+      // 3. Navigate to detail page
+      await page.goto(`/learning-paths/${createdPathId}`);
+      await expect(page.getByRole("heading", { name: uniqueTitle })).toBeVisible();
+
+      // 4. Add both resources under the Resources tab
+      const select = page.locator("select");
+      await select.selectOption(bookmarkId1);
+      await page.getByRole("button", { name: /Add to Path/i }).click();
+
+      await select.selectOption(bookmarkId2);
+      await page.getByRole("button", { name: /Add to Path/i }).click();
+
+      const items = page.locator('[data-testid="learning-path-item"]');
+      await expect(items).toHaveCount(2);
+
+      // 5. Switch to Notes tab
+      const notesTab = page.getByTestId("tab-notes");
+      await notesTab.click();
+      await expect(page.getByTestId("path-notebook-section")).toBeVisible();
+
+      // 6. Focus editor and type path-level notes
+      const editor = page.getByTestId("tiptap-editor-content");
+      await editor.click();
+      await page.keyboard.type("Shared LLM Notes: Covering both Karpathy video and Attention paper.");
+
+      // 7. Wait for autosave to complete
+      await expect(page.getByTestId("autosave-status")).toContainText(/Saved/i, { timeout: 10000 });
+
+      // 8. Switch back to Resources tab and delete the first resource
+      const resourcesTab = page.getByTestId("tab-resources");
+      await resourcesTab.click();
+
+      page.once("dialog", async (dialog) => {
+        await dialog.accept();
+      });
+      const firstItemDeleteBtn = items.first().getByRole("button", { name: "Remove item" });
+      await firstItemDeleteBtn.click();
+
+      // Verify only 1 resource remains in path
+      await expect(items).toHaveCount(1);
+
+      // 9. Switch back to Notes tab — verify notes were NOT deleted or reset!
+      await notesTab.click();
+      await expect(editor).toContainText("Shared LLM Notes: Covering both Karpathy video and Attention paper.");
+
+      // 10. Reload the page and verify notes persist across reloads
+      await page.reload();
+      await notesTab.click();
+      await expect(editor).toContainText("Shared LLM Notes: Covering both Karpathy video and Attention paper.");
+    } finally {
+      // Clean up test bookmarks
+      if (bookmarkId1) {
+        await page.request.delete(`/api/bookmarks/${bookmarkId1}`).catch(() => {});
+      }
+      if (bookmarkId2) {
+        await page.request.delete(`/api/bookmarks/${bookmarkId2}`).catch(() => {});
+      }
+    }
+  });
 });

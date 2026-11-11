@@ -78,3 +78,39 @@ export interface UpdatePathItemInput {
   is_completed?: boolean;
   position?: number;
 }
+
+/**
+ * Tiptap structured JSON document node representation.
+ */
+export type TiptapNode = {
+  type: string;
+  attrs?: Record<string, unknown>;
+  content?: TiptapNode[];
+  marks?: Array<{
+    type: string;
+    attrs?: Record<string, unknown>;
+    [key: string]: unknown;
+  }>;
+  text?: string;
+  [key: string]: unknown;
+};
+
+/**
+ * Rich-text notebook model for a Learning Path (1:1 relation).
+ */
+export interface LearningNote {
+  id: string;
+  user_id: string;
+  learning_path_id: string;
+  content: TiptapNode;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Input for updating or creating a path notebook (PUT /api/learning-paths/:id/notes).
+ */
+export interface UpdateLearningNoteInput {
+  content: TiptapNode;
+}
+
