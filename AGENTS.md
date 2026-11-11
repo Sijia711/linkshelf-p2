@@ -68,6 +68,19 @@ docs/API.md                 # REST endpoint documentation
 
 Keep business logic out of UI components when practical. Use Route Handlers for REST operations. Use Supabase Auth instead of building custom JWT issuance. A minimal `bookmarks` table can hold `id`, `user_id`, `title`, `url`, `tags` (text array), `created_at`, `updated_at`, and nullable `deleted_at`. Avoid extra tables until needed.
 
+### 4.1 Frontend feature modules (`features/`)
+
+Added in Sprint 2 after the bookmark UI was built as an isolated module (PR #14). These rules apply to `features/<feature>/`; they do not change the backend, auth, or learning-paths conventions above.
+
+- A feature module is backend-agnostic UI. It must not call `fetch`, import Supabase clients, read environment variables, or depend on a session. It receives data through props and reports every change through Promise-returning callbacks.
+- The page or wrapper that mounts the module (for example under `app/dashboard/`) owns canonical data, API calls, and refresh. Its callbacks must reject on any non-2xx response or `error` envelope, and the module must not show success before a callback resolves.
+- Import a module only through its `index.ts`. Keep the exported prop types stable; changing them needs agreement from both developers.
+- Reuse validation from `lib/` (for example `validateTitle`, `validateUrl`, `normalizeTags` in `lib/bookmarks.ts`) instead of re-implementing rules, so the browser and the API enforce the same limits and messages.
+- Keep pure logic (validation, filtering, selection) in plain `.ts` files and rendering in `.tsx` components. Put `"use client"` only on the entry component.
+- Modals follow the `features/bookmark-ui/Dialog.tsx` pattern: `role="dialog"`, `aria-modal`, a labelled heading, initial focus, Tab kept inside the dialog, Escape closes unless a save is pending, and focus returns to the trigger.
+- Render user content as text, never as HTML. External links use `target="_blank" rel="noopener noreferrer"`.
+- Mock-data preview routes (such as `app/bookmark-ui-preview/`) are for development only and must be removed or protected before production.
+
 ## 5. Coding conventions
 
 - TypeScript: use explicit types for API payloads and data models; avoid `any`.
@@ -96,6 +109,15 @@ Keep business logic out of UI components when practical. Use Route Handlers for 
 - Before a PR, run the available commands for lint, type-check, tests, and build. If setup is incomplete, say which commands could not yet run.
 - Do not write fake tests, skip failing tests without explanation, or claim unverified passes.
 
+### 7.1 Frontend component tests
+
+- Put tests next to the module in `features/<feature>/__tests__/` as `*.test.ts` (pure logic) or `*.test.tsx` (components). `vitest.config.mts` includes `features/**/*.test.{ts,tsx}`.
+- The global Vitest environment stays `node` for API tests. Each component test file starts with `// @vitest-environment jsdom` and calls `afterEach(cleanup)`.
+- Use React Testing Library and `@testing-library/user-event`. Query by role and accessible name or label text, not CSS classes, so tests also check accessibility.
+- Assert behavior, not implementation: the callback is called once with the expected arguments, pending states block duplicate submits, rejected callbacks keep the dialog open with an error, and no success is shown before a callback resolves. Use deferred promises and `act` for pending states.
+- For TDD, commit the failing test on its own (for example `test(bookmark-ui): add failing test for ...`) before the commit that makes it pass.
+- After switching branches, run `rm -rf .next` if type-check reports errors inside `.next/types`; stale generated route types cause false failures.
+
 ## 8. Scrum and GitHub workflow
 
 - Sprint 1: Milestone **Sprint 1** (due Nov 6, 2026), Issues #1–#5. Start in **Sprint Todo**.
@@ -108,6 +130,13 @@ Keep business logic out of UI components when practical. Use Route Handlers for 
 - Request the teammate's review when a teammate has joined. Until then, leave a clear self-review checklist and note that peer review is pending; never pretend a second person reviewed the PR.
 - Mention related issues using `#3` in commits, comments, and PRs. Keep acceptance-criteria checkboxes updated with actual progress.
 
+### 8.1 Branches, pull requests, and reviews (added in Sprint 2)
+
+- Create each branch from the latest `origin/main`. Do not copy files from another open PR into your branch; wait for it to merge and rebase, or base your branch on it and say so in the PR. Copied files hide the original author in the git history.
+- When PRs depend on each other, state the merge order in the PR body (for example, #15 before #14 before #16).
+- Use `Closes #n` only when the merged PR meets the Issue's acceptance criteria; otherwise use `Refs #n`.
+- Every PR is reviewed by the other developer before merge. The reviewer checks out the branch, runs lint, type-check, tests, and build locally, and leaves concrete comments; an approval with open comments means they must be resolved before merge.
+
 ## 9. AI coding instructions
 
 1. Identify the Issue and read its acceptance criteria, the relevant PRD section, and the relevant mockup.
@@ -117,10 +146,16 @@ Keep business logic out of UI components when practical. Use Route Handlers for 
 5. Summarize changed files and which acceptance criteria are met, and suggest the matching commit and PR text.
 6. If requirements are ambiguous, choose the simplest option consistent with the PRD and mockups; mention the assumption.
 
+7. Before documenting API behavior or writing UI copy about it, read the route handler code and match it. Do not copy behavior from older docs.
+
 ## 10. Rules maintenance
 
 Update this file when the actual architecture, dependencies, design, or working agreement changes. After the HW3 without-rules / with-rules experiment, record one concrete change to these rules based on an observed failure or inconsistency; do not claim an improvement unless the comparison supports it.
 
+
+### Rules change log
+
+- 2026-11-10 (Sprint 2): Added §4.1, §7.1, §8.1, and rule 7 in §9 after the bookmark UI integration. Observed problem: documentation drifted from the code. `docs/API_CONTRACT.md` described single DELETE as permanent while `app/api/bookmarks/[id]/route.ts` soft-deletes, the UI copy repeated the wrong wording, and draft docs described Bearer-token auth that the server does not implement. Dependent PRs (#14, #15, #16) also needed an explicit merge order.
 
 ## Scope Control
 
