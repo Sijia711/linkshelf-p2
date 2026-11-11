@@ -46,6 +46,7 @@ export function BookmarkWorkspace({
 }: BookmarkWorkspaceProps) {
   const searchId = useId();
   const restoringRef = useRef(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const [query, setQuery] = useState("");
   const [activeTag, setActiveTag] = useState<string | null>(null);
@@ -65,6 +66,7 @@ export function BookmarkWorkspace({
   const visible = filterBookmarks(bookmarks, { query, tag: effectiveTag });
   const selected = pruneSelection(selectedIds, visible);
   const emptyState = getEmptyState(bookmarks.length, visible.length);
+  const isFiltered = query.trim() !== "" || effectiveTag !== null;
 
   function clearSelection() {
     setSelectedIds((prev) => (prev.size === 0 ? prev : new Set()));
@@ -78,6 +80,13 @@ export function BookmarkWorkspace({
   function changeTag(tag: string | null) {
     setActiveTag(tag);
     clearSelection();
+  }
+
+  function resetFilters() {
+    setQuery("");
+    setActiveTag(null);
+    clearSelection();
+    searchRef.current?.focus();
   }
 
   function toggleSelected(id: string) {
@@ -148,9 +157,16 @@ export function BookmarkWorkspace({
     }
     if (emptyState === "no-results") {
       return (
-        <p className="rounded-xl border border-dashed border-gray-300 bg-white py-16 text-center text-sm text-gray-500">
-          No bookmarks match your search or filter.
-        </p>
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-300 bg-white py-16 text-center">
+          <p className="text-sm text-gray-500">No bookmarks match your search or filter.</p>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+          >
+            Clear search and filter
+          </button>
+        </div>
       );
     }
     return (
@@ -177,6 +193,7 @@ export function BookmarkWorkspace({
           Search bookmarks by title
         </label>
         <input
+          ref={searchRef}
           id={searchId}
           type="search"
           value={query}
@@ -194,6 +211,12 @@ export function BookmarkWorkspace({
       </div>
 
       {tags.length > 0 && <TagFilter tags={tags} activeTag={effectiveTag} onChange={changeTag} />}
+
+      {isFiltered && bookmarks.length > 0 && (
+        <p className="text-sm text-gray-600" aria-live="polite">
+          Showing {visible.length} of {bookmarks.length} {bookmarks.length === 1 ? "bookmark" : "bookmarks"}
+        </p>
+      )}
 
       {errorMessage && (
         <p role="alert" className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
