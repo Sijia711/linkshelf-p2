@@ -364,3 +364,31 @@ describe("BookmarkWorkspace — additional edge cases", () => {
   });
 });
 
+describe("BookmarkWorkspace — filter summary and reset", () => {
+  it("shows how many bookmarks match while a search or tag filter is active", async () => {
+    const { user } = setup();
+    expect(screen.queryByText(/^Showing \d+ of \d+/)).toBeNull();
+
+    await user.type(screen.getByRole("searchbox"), "doc");
+    expect(screen.getByText("Showing 2 of 3 bookmarks")).not.toBeNull();
+
+    await user.clear(screen.getByRole("searchbox"));
+    await user.click(screen.getByRole("button", { name: "design" }));
+    expect(screen.getByText("Showing 1 of 3 bookmarks")).not.toBeNull();
+  });
+
+  it("offers a reset in the no-results state that clears search and tag filter", async () => {
+    const { user } = setup();
+    await user.click(screen.getByRole("button", { name: "reference" }));
+    await user.type(screen.getByRole("searchbox"), "zzz");
+    expect(screen.getByText("No bookmarks match your search or filter.")).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Clear search and filter" }));
+
+    const searchbox = screen.getByRole("searchbox") as HTMLInputElement;
+    expect(searchbox.value).toBe("");
+    expect(document.activeElement).toBe(searchbox);
+    expect(screen.getByRole("button", { name: "All" }).getAttribute("aria-pressed")).toBe("true");
+    expect(cardTitles()).toEqual(["MDN Web Docs", "A List Apart", "Postgres Documentation"]);
+  });
+});
