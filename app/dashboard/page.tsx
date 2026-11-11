@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { signOutAction } from "@/app/auth/actions";
+import BookmarkDashboardClient from "./BookmarkDashboardClient";
 
 export const metadata = {
   title: "Dashboard — LinkShelf",
@@ -22,10 +24,24 @@ export default async function DashboardPage() {
       {/* Dashboard Header */}
       <header className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-6">
             <span className="text-xl font-bold tracking-tight text-gray-900">
               LinkShelf
             </span>
+            <nav className="flex space-x-4">
+              <Link
+                href="/dashboard"
+                className="text-sm font-semibold text-blue-600 hover:text-blue-800"
+              >
+                Bookmarks
+              </Link>
+              <Link
+                href="/learning-paths"
+                className="text-sm font-medium text-gray-600 hover:text-gray-900"
+              >
+                Learning Paths
+              </Link>
+            </nav>
           </div>
 
           <div className="flex items-center space-x-4">
@@ -45,16 +61,9 @@ export default async function DashboardPage() {
         </div>
       </header>
 
-      {/* Main Dashboard Placeholder */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="bg-white rounded-lg shadow-xs border border-gray-200 p-8 text-center">
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">
-            Welcome to LinkShelf
-          </h2>
-          <p className="text-gray-600 max-w-md mx-auto text-sm">
-            Authentication successfully verified. Bookmark management UI, search, and tags will be connected here.
-          </p>
-        </div>
+      {/* Main Bookmark Workspace */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <BookmarkDashboardClient />
       </main>
     </div>
   );
