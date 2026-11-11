@@ -1,0 +1,1174 @@
+openapi: 3.0.3
+info:
+  title: LinkShelf REST API
+  description: |
+    # LinkShelf REST API Specification
+    
+    LinkShelf is a web application for saving, organizing, and curating bookmarks and guided learning paths.
+    
+    ## Authentication
+    All endpoints require an authenticated Supabase user session. Authentication can be provided via:
+    1. **Session Cookie**: HTTP-only session cookies managed by `@supabase/ssr` (used automatically in web browsers).
+    2. **Bearer Token**: Standard Supabase JWT passed in the HTTP Authorization header (`Authorization: Bearer <access_token>`).
+    
+    ## Row Level Security (RLS) & Isolation
+    All operations are strictly scoped to the authenticated user (`auth.uid() = user_id`). Users can never access, query, modify, or delete resources belonging to any other user.
+    
+    ## Response Envelope Format
+    Every API response conforms to a consistent JSON envelope:
+    - **Success** (HTTP 200 / 201):
+      ```json
+      {
+        "data": { ... },
+        "error": null
+      }
+      ```
+    - **Error** (HTTP 400 / 401 / 404 / 409 / 500):
+      ```json
+      {
+        "data": null,
+        "error": {
+          "code": "VALIDATION_ERROR",
+          "message": "Human-readable description",
+          "details": { "field": ["Field error detail"] }
+        }
+      }
+      ```
+      
+    ## How to Preview & Validate
+    - **Swagger Editor**: Copy this file's contents into [Swagger Editor](https://editor.swagger.io/).
+    - **Redocly CLI**: Run `npx @redocly/cli lint docs/openapi.yaml`.
+    - **VS Code**: Use the "OpenAPI (Swagger) Editor" or "Swagger Viewer" extensions to render interactive documentation directly in your editor.
+  version: 1.0.0
+  contact:
+    name: LinkShelf Team
+    url: https://github.com/Sijia711/linkshelf-p2
+servers:
+  - url: https://linkshelf-p2.vercel.app
+    description: Production Environment
+  - url: http://localhost:3000
+    description: Local Development Server
+
+tags:
+  - name: Bookmarks
+    description: Bookmark creation, retrieval, filtering, updating, and soft-delete/undo operations.
+  - name: Learning Paths
+    description: Guided learning path curation, progress tracking, and metadata management.
+  - name: Learning Path Items
+    description: Managing items inside a learning path, completion tracking, and reordering.
+
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+
+paths:
+  # ---------------------------------------------------------------------------
+  # /api/bookmarks
+  # ---------------------------------------------------------------------------
+  /api/bookmarks:
+    get:
+      tags:
+        - Bookmarks
+      summary: List bookmarks
+      description: |
+        Retrieves active bookmarks belonging to the authenticated user, ordered by `created_at DESC`.
+        Supports optional search filtering by title and exact tag matching.
+      operationId: listBookmarks
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive substring search matching against bookmark titles.
+          required: false
+          schema:
+            type: string
+          example: docs
+        - name: tag
+          in: query
+          description: Case-insensitive tag filter. Returns bookmarks containing this exact tag.
+          required: false
+          schema:
+            type: string
+          example: nextjs
+        - name: include_deleted
+          in: query
+          description: When set to `"true"`, includes soft-deleted bookmarks (`deleted_at IS NOT NULL`). Default is false.
+          required: false
+          schema:
+            type: string
+            enum: ["true", "false"]
+          example: "false"
+      responses:
+        '200':
+          description: Successfully retrieved user bookmarks.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookmarkListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Bookmarks
+      summary: Create bookmark
+      description: |
+        Creates a new bookmark for the authenticated user.
+        Owner ID (`user_id`) is automatically bound to the authenticated user (`auth.uid()`).
+      operationId: createBookmark
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBookmarkInput'
+      responses:
+        '201':
+          description: Bookmark created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookmarkSingleResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ---------------------------------------------------------------------------
+  # /api/bookmarks/{id}
+  # ---------------------------------------------------------------------------
+  /api/bookmarks/{id}:
+    patch:
+      tags:
+        - Bookmarks
+      summary: Update bookmark
+      description: |
+        Updates an existing bookmark's title, URL, or tags.
+        Only active bookmarks owned by the authenticated user can be updated.
+        Modifying `user_id` or `id` is strictly prohibited.
+      operationId: updateBookmark
+      parameters:
+        - $ref: '#/components/parameters/BookmarkId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBookmarkInput'
+      responses:
+        '200':
+          description: Bookmark updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookmarkSingleResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Bookmarks
+      summary: Soft-delete bookmark
+      description: |
+        Soft-deletes a single bookmark by recording the current timestamp in `deleted_at`.
+        Physical database rows are preserved to enable restoration.
+      operationId: deleteBookmark
+      parameters:
+        - $ref: '#/components/parameters/BookmarkId'
+      responses:
+        '200':
+          description: Bookmark soft-deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BookmarkDeleteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequestError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ---------------------------------------------------------------------------
+  # /api/bookmarks/bulk-delete
+  # ---------------------------------------------------------------------------
+  /api/bookmarks/bulk-delete:
+    post:
+      tags:
+        - Bookmarks
+      summary: Bulk soft-delete bookmarks
+      description: |
+        Soft-deletes multiple active bookmarks owned by the authenticated user in a single transaction.
+        Sets `deleted_at = NOW()` on matching active bookmarks.
+      operationId: bulkDeleteBookmarks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkBookmarkInput'
+      responses:
+        '200':
+          description: Bookmarks soft-deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkOperationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ---------------------------------------------------------------------------
+  # /api/bookmarks/bulk-restore
+  # ---------------------------------------------------------------------------
+  /api/bookmarks/bulk-restore:
+    post:
+      tags:
+        - Bookmarks
+      summary: Bulk restore soft-deleted bookmarks (Undo)
+      description: |
+        Restores previously soft-deleted bookmarks owned by the authenticated user by setting `deleted_at = NULL`.
+        Enables the one-step Undo feature after bulk deletion.
+      operationId: bulkRestoreBookmarks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BulkBookmarkInput'
+      responses:
+        '200':
+          description: Bookmarks restored successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkOperationResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ---------------------------------------------------------------------------
+  # /api/learning-paths
+  # ---------------------------------------------------------------------------
+  /api/learning-paths:
+    get:
+      tags:
+        - Learning Paths
+      summary: List learning paths
+      description: |
+        Retrieves all learning paths created by the authenticated user, ordered by `created_at DESC`.
+        Includes computed progress statistics (`total_items`, `completed_items`, `progress_percentage`).
+      operationId: listLearningPaths
+      responses:
+        '200':
+          description: Successfully retrieved user learning paths.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPathListResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    post:
+      tags:
+        - Learning Paths
+      summary: Create learning path
+      description: |
+        Creates a new learning path for the authenticated user.
+      operationId: createLearningPath
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLearningPathInput'
+      responses:
+        '201':
+          description: Learning path created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPathSingleResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ---------------------------------------------------------------------------
+  # /api/learning-paths/{id}
+  # ---------------------------------------------------------------------------
+  /api/learning-paths/{id}:
+    get:
+      tags:
+        - Learning Paths
+      summary: Get learning path details
+      description: |
+        Retrieves a single learning path with its ordered items, joined bookmark details, and computed progress.
+      operationId: getLearningPath
+      parameters:
+        - $ref: '#/components/parameters/LearningPathId'
+      responses:
+        '200':
+          description: Successfully retrieved learning path details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPathDetailResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    patch:
+      tags:
+        - Learning Paths
+      summary: Update learning path
+      description: |
+        Updates a learning path's title and/or description.
+      operationId: updateLearningPath
+      parameters:
+        - $ref: '#/components/parameters/LearningPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateLearningPathInput'
+      responses:
+        '200':
+          description: Learning path updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPathUpdatedResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Learning Paths
+      summary: Delete learning path
+      description: |
+        Deletes a learning path and its associated path items (cascade delete).
+        Original bookmarks remain untouched in the user's bookmark library.
+      operationId: deleteLearningPath
+      parameters:
+        - $ref: '#/components/parameters/LearningPathId'
+      responses:
+        '200':
+          description: Learning path deleted successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericMessageResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ---------------------------------------------------------------------------
+  # /api/learning-paths/{id}/items
+  # ---------------------------------------------------------------------------
+  /api/learning-paths/{id}/items:
+    post:
+      tags:
+        - Learning Path Items
+      summary: Add bookmark item to learning path
+      description: |
+        Adds an existing active bookmark to a learning path.
+        - The bookmark and learning path must both belong to the authenticated user.
+        - Soft-deleted bookmarks cannot be added.
+        - Duplicate bookmarks in the same path are rejected (409 Conflict).
+        - New items are appended at the end of the ordered list (`position = max + 1`).
+      operationId: addLearningPathItem
+      parameters:
+        - $ref: '#/components/parameters/LearningPathId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddPathItemInput'
+      responses:
+        '201':
+          description: Bookmark added to learning path successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPathItemResponse'
+        '400':
+          description: Invalid input or bookmark is soft-deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorEnvelope'
+              examples:
+                validationError:
+                  value:
+                    data: null
+                    error:
+                      code: VALIDATION_ERROR
+                      message: bookmark_id must be a valid UUID.
+                softDeletedError:
+                  value:
+                    data: null
+                    error:
+                      code: BOOKMARK_DELETED
+                      message: Cannot add a soft-deleted bookmark to a learning path.
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '409':
+          description: Duplicate bookmark in learning path.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiErrorEnvelope'
+              example:
+                data: null
+                error:
+                  code: DUPLICATE_BOOKMARK
+                  message: This bookmark is already in the learning path.
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  # ---------------------------------------------------------------------------
+  # /api/learning-paths/{id}/items/{itemId}
+  # ---------------------------------------------------------------------------
+  /api/learning-paths/{id}/items/{itemId}:
+    patch:
+      tags:
+        - Learning Path Items
+      summary: Update learning path item
+      description: |
+        Updates a learning path item's completion status (`is_completed`) and/or moves its position (`direction: "up" | "down"`).
+        When reordering, adjacent sibling positions are swapped atomically.
+      operationId: updateLearningPathItem
+      parameters:
+        - $ref: '#/components/parameters/LearningPathId'
+        - $ref: '#/components/parameters/LearningPathItemId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdatePathItemInput'
+      responses:
+        '200':
+          description: Item updated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LearningPathItemResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      tags:
+        - Learning Path Items
+      summary: Remove item from learning path
+      description: |
+        Removes an item from a learning path without deleting the underlying bookmark.
+        Remaining items are sequentially re-indexed to close any position gaps.
+      operationId: deleteLearningPathItem
+      parameters:
+        - $ref: '#/components/parameters/LearningPathId'
+        - $ref: '#/components/parameters/LearningPathItemId'
+      responses:
+        '200':
+          description: Item removed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenericMessageResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+# -----------------------------------------------------------------------------
+# Components
+# -----------------------------------------------------------------------------
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sb-access-token
+      description: Supabase Auth session cookie set automatically by `@supabase/ssr` in browser sessions.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "Supabase JWT access token passed in the Authorization header (`Authorization: Bearer <token>`)."
+
+  parameters:
+    BookmarkId:
+      name: id
+      in: path
+      required: true
+      description: RFC 4122 v4 UUID of the bookmark.
+      schema:
+        type: string
+        format: uuid
+      example: 7b27521e-f3f2-4cbe-b4db-0824835848bb
+
+    LearningPathId:
+      name: id
+      in: path
+      required: true
+      description: RFC 4122 v4 UUID of the learning path.
+      schema:
+        type: string
+        format: uuid
+      example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+
+    LearningPathItemId:
+      name: itemId
+      in: path
+      required: true
+      description: RFC 4122 v4 UUID of the learning path item.
+      schema:
+        type: string
+        format: uuid
+      example: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+
+  responses:
+    BadRequestError:
+      description: Bad request (malformed JSON or invalid path parameter).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorEnvelope'
+          example:
+            data: null
+            error:
+              code: BAD_REQUEST
+              message: Invalid bookmark ID format.
+
+    ValidationError:
+      description: Validation failed on request body or parameters.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorEnvelope'
+          example:
+            data: null
+            error:
+              code: VALIDATION_ERROR
+              message: Invalid bookmark input.
+              details:
+                url:
+                  - URL must use http:// or https:// protocol.
+                title:
+                  - Title is required.
+
+    UnauthorizedError:
+      description: Missing or invalid authentication credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorEnvelope'
+          example:
+            data: null
+            error:
+              code: UNAUTHORIZED
+              message: Authentication required. Please sign in.
+
+    NotFoundError:
+      description: Requested resource was not found, belongs to another user, or has been soft-deleted.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorEnvelope'
+          example:
+            data: null
+            error:
+              code: NOT_FOUND
+              message: Bookmark not found or you do not have permission to edit it.
+
+    InternalServerError:
+      description: Unexpected internal server or database error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiErrorEnvelope'
+          example:
+            data: null
+            error:
+              code: INTERNAL_ERROR
+              message: Failed to retrieve bookmarks.
+
+  schemas:
+    # -------------------------------------------------------------------------
+    # Base Error Envelope
+    # -------------------------------------------------------------------------
+    ApiErrorEnvelope:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: 'null'
+          nullable: true
+          example: null
+        error:
+          type: object
+          required:
+            - code
+            - message
+          properties:
+            code:
+              type: string
+              example: VALIDATION_ERROR
+            message:
+              type: string
+              example: Invalid bookmark input.
+            details:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+              example:
+                url: ["URL must use http:// or https:// protocol."]
+
+    # -------------------------------------------------------------------------
+    # Bookmark Schemas
+    # -------------------------------------------------------------------------
+    Bookmark:
+      type: object
+      required:
+        - id
+        - user_id
+        - title
+        - url
+        - tags
+        - created_at
+        - updated_at
+        - deleted_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: e4b5c6d7-e8f9-4a0b-1c2d-3e4f5a6b7c8d
+        user_id:
+          type: string
+          format: uuid
+          example: u1v2w3x4-y5z6-7a8b-9c0d-1e2f3a4b5c6d
+        title:
+          type: string
+          maxLength: 255
+          example: Next.js Documentation
+        url:
+          type: string
+          format: uri
+          example: https://nextjs.org/docs
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["nextjs", "react", "docs"]
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-11-09T10:00:00.000Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-11-09T10:00:00.000Z
+        deleted_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+
+    CreateBookmarkInput:
+      type: object
+      required:
+        - title
+        - url
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Non-empty bookmark title (max 255 characters after trimming).
+          example: Next.js Documentation
+        url:
+          type: string
+          format: uri
+          description: Valid URL starting with http:// or https://.
+          example: https://nextjs.org/docs
+        tags:
+          type: array
+          description: Optional list of tags. Will be trimmed, lowercased, and deduplicated automatically.
+          items:
+            type: string
+          example: ["nextjs", "react"]
+
+    UpdateBookmarkInput:
+      type: object
+      description: Bookmark update fields. At least one field must be provided.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Updated bookmark title.
+          example: Next.js App Router Documentation
+        url:
+          type: string
+          format: uri
+          description: Updated URL starting with http:// or https://.
+          example: https://nextjs.org/docs/app
+        tags:
+          type: array
+          description: Updated tags list.
+          items:
+            type: string
+          example: ["nextjs", "app-router"]
+
+    BulkBookmarkInput:
+      type: object
+      required:
+        - ids
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 100
+          description: Array of 1 to 100 valid RFC 4122 UUIDs.
+          items:
+            type: string
+            format: uuid
+          example:
+            - e4b5c6d7-e8f9-4a0b-1c2d-3e4f5a6b7c8d
+            - f5a6b7c8-d9e0-4f1a-2b3c-4d5e6f7a8b9c
+
+    BookmarkListResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - bookmarks
+            - total
+          properties:
+            bookmarks:
+              type: array
+              items:
+                $ref: '#/components/schemas/Bookmark'
+            total:
+              type: integer
+              example: 1
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    BookmarkSingleResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          $ref: '#/components/schemas/Bookmark'
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    BookmarkDeleteResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - deleted
+          properties:
+            id:
+              type: string
+              format: uuid
+              example: e4b5c6d7-e8f9-4a0b-1c2d-3e4f5a6b7c8d
+            deleted:
+              type: boolean
+              example: true
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    BulkOperationResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - affectedCount
+            - ids
+          properties:
+            affectedCount:
+              type: integer
+              example: 2
+            ids:
+              type: array
+              items:
+                type: string
+                format: uuid
+              example:
+                - e4b5c6d7-e8f9-4a0b-1c2d-3e4f5a6b7c8d
+                - f5a6b7c8-d9e0-4f1a-2b3c-4d5e6f7a8b9c
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    # -------------------------------------------------------------------------
+    # Learning Path Schemas
+    # -------------------------------------------------------------------------
+    LearningPath:
+      type: object
+      required:
+        - id
+        - user_id
+        - title
+        - description
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        user_id:
+          type: string
+          format: uuid
+          example: u1v2w3x4-y5z6-7a8b-9c0d-1e2f3a4b5c6d
+        title:
+          type: string
+          maxLength: 255
+          example: Full-Stack Web Development
+        description:
+          type: string
+          maxLength: 2000
+          example: Curated path covering React, Next.js, and Supabase.
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-11-09T10:00:00.000Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-11-09T10:00:00.000Z
+
+    LearningPathWithStats:
+      allOf:
+        - $ref: '#/components/schemas/LearningPath'
+        - type: object
+          required:
+            - total_items
+            - completed_items
+            - progress_percentage
+          properties:
+            total_items:
+              type: integer
+              example: 5
+            completed_items:
+              type: integer
+              example: 2
+            progress_percentage:
+              type: number
+              format: float
+              example: 40
+
+    LearningPathItem:
+      type: object
+      required:
+        - id
+        - learning_path_id
+        - bookmark_id
+        - user_id
+        - position
+        - is_completed
+        - completed_at
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: 9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
+        learning_path_id:
+          type: string
+          format: uuid
+          example: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+        bookmark_id:
+          type: string
+          format: uuid
+          example: e4b5c6d7-e8f9-4a0b-1c2d-3e4f5a6b7c8d
+        user_id:
+          type: string
+          format: uuid
+          example: u1v2w3x4-y5z6-7a8b-9c0d-1e2f3a4b5c6d
+        position:
+          type: integer
+          example: 0
+        is_completed:
+          type: boolean
+          example: false
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          example: 2026-11-09T10:00:00.000Z
+        updated_at:
+          type: string
+          format: date-time
+          example: 2026-11-09T10:00:00.000Z
+        bookmark:
+          allOf:
+            - $ref: '#/components/schemas/Bookmark'
+          nullable: true
+          description: Left-joined bookmark record. Null if bookmark was soft-deleted or removed.
+
+    LearningPathDetail:
+      allOf:
+        - $ref: '#/components/schemas/LearningPathWithStats'
+        - type: object
+          required:
+            - items
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/LearningPathItem'
+
+    CreateLearningPathInput:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Non-empty learning path title (max 255 characters after trimming).
+          example: TypeScript Mastery
+        description:
+          type: string
+          maxLength: 2000
+          description: Optional description (max 2000 characters).
+          example: Complete guide to advanced TypeScript typing and generics.
+
+    UpdateLearningPathInput:
+      type: object
+      description: Fields to update. At least one must be provided.
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Updated learning path title.
+          example: TypeScript & Next.js Mastery
+        description:
+          type: string
+          maxLength: 2000
+          description: Updated description.
+          example: Updated path including App Router and React Server Components.
+
+    AddPathItemInput:
+      type: object
+      required:
+        - bookmark_id
+      properties:
+        bookmark_id:
+          type: string
+          format: uuid
+          description: The UUID of the bookmark to add to the learning path.
+          example: e4b5c6d7-e8f9-4a0b-1c2d-3e4f5a6b7c8d
+
+    UpdatePathItemInput:
+      type: object
+      description: Update parameters for a path item. At least one field must be provided.
+      properties:
+        is_completed:
+          type: boolean
+          description: Toggle whether this item has been marked as completed.
+          example: true
+        direction:
+          type: string
+          enum: ["up", "down"]
+          description: Shift the item's position up or down in the sequence.
+          example: up
+
+    LearningPathListResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - learning_paths
+            - total
+          properties:
+            learning_paths:
+              type: array
+              items:
+                $ref: '#/components/schemas/LearningPathWithStats'
+            total:
+              type: integer
+              example: 1
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    LearningPathSingleResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - learning_path
+          properties:
+            learning_path:
+              $ref: '#/components/schemas/LearningPathWithStats'
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    LearningPathUpdatedResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - learning_path
+          properties:
+            learning_path:
+              $ref: '#/components/schemas/LearningPath'
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    LearningPathDetailResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - learning_path
+          properties:
+            learning_path:
+              $ref: '#/components/schemas/LearningPathDetail'
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    LearningPathItemResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - item
+          properties:
+            item:
+              $ref: '#/components/schemas/LearningPathItem'
+        error:
+          type: 'null'
+          nullable: true
+          example: null
+
+    GenericMessageResponse:
+      type: object
+      required:
+        - data
+        - error
+      properties:
+        data:
+          type: object
+          required:
+            - message
+          properties:
+            message:
+              type: string
+              example: Operation completed successfully.
+        error:
+          type: 'null'
+          nullable: true
+          example: null
