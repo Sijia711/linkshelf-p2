@@ -1,0 +1,47 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run every Monday at 04:00 UTC to catch newly disclosed advisories
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  dependency-audit:
+    name: Dependency Vulnerability Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate full vulnerability report
+        run: |
+          echo "=================================================="
+          echo "Full Dependency Vulnerability Report (npm audit)"
+          echo "=================================================="
+          npm audit || true
+
+      - name: Enforce security policy (zero high or critical vulnerabilities)
+        run: |
+          echo "=================================================="
+          echo "Enforcing zero High or Critical vulnerabilities"
+          echo "=================================================="
+          npm audit --audit-level=high
