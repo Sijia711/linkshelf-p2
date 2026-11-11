@@ -49,8 +49,7 @@ CREATE TRIGGER trigger_learning_notes_set_updated_at
 -- -----------------------------------------------------------------------------
 REVOKE ALL ON TABLE public.learning_notes FROM anon, authenticated;
 
-GRANT SELECT, INSERT, DELETE ON TABLE public.learning_notes TO authenticated;
-GRANT UPDATE (content, updated_at) ON TABLE public.learning_notes TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.learning_notes TO authenticated;
 
 -- -----------------------------------------------------------------------------
 -- 5. Row Level Security (RLS) Policies
