@@ -121,7 +121,7 @@ No written standups were recorded.
 
 ### 6.1 Partner feedback
 
-- **Haoran → Sijia:** TODO (Haoran)
+- **Haoran → Sijia:** Sijia's written handoff and the fixed props/callback contract made it possible for me to build and test the whole bookmark UI without a running backend, and her backend came with thorough tests (144 passing) that I could rely on. She also responded quickly once I joined, turning my requests into PRs within hours (#15 for test setup, #16 for dashboard integration). Two things I'd suggest for next time: open PRs for partner review before merging, since #11–#13 went in unreviewed, and keep the API docs in sync with the route code; `API_CONTRACT.md` still describes DELETE as permanent even though the route soft-deletes.
 - **Sijia → Haoran:** TODO (Sijia)
 
 ### 6.2 Contribution log (snapshot)
